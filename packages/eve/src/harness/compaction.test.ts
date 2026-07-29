@@ -1,7 +1,7 @@
 import type { ModelMessage } from "ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { COMPACTION_PROMPT_ENVELOPE } from "#harness/compaction-prompt.js";
+import { AGENTS_SNIPPET_LABEL, COMPACTION_PROMPT_ENVELOPE } from "#harness/compaction-prompt.js";
 import {
   compactMessages,
   getInputTokenCount,
@@ -285,6 +285,13 @@ function assistant(text: string): ModelMessage {
   return { content: text, role: "assistant" };
 }
 
+function agentsSnippet(id: string): ModelMessage {
+  return {
+    content: `${AGENTS_SNIPPET_LABEL}\n<agents>\n<agent id="${id}" name="researcher">status for ${id}</agent>\n</agents>`,
+    role: "system",
+  };
+}
+
 /** An assistant tool-call message and its paired tool-result message. */
 function toolExchange(input: {
   readonly callId: string;
@@ -449,6 +456,41 @@ describe("compactMessages: tool-result cap heuristic", () => {
 });
 
 describe("compactMessages: summarization fallback", () => {
+  it("keeps only the newest agents snippet without summarizing snippet text", async () => {
+    const oldSnippet = agentsSnippet("old-agent");
+    const middleSnippet = agentsSnippet("middle-agent");
+    const newestSnippet = agentsSnippet("newest-agent");
+    const messages = [
+      oldSnippet,
+      user("first request"),
+      middleSnippet,
+      assistant("first answer"),
+      newestSnippet,
+      user("older context ".repeat(2_000)),
+      assistant("recent answer"),
+      user("continue"),
+    ];
+
+    const { result, summarizer } = await compact(messages, {
+      recentWindowSize: 2,
+      threshold: 2_000,
+    });
+
+    expect(summarizer).toHaveBeenCalledTimes(1);
+    const summaryPrompt = summarizer.mock.calls[0]?.[0]?.prompt;
+    expect(summaryPrompt).not.toContain("old-agent");
+    expect(summaryPrompt).not.toContain("middle-agent");
+    expect(summaryPrompt).not.toContain("newest-agent");
+
+    const survivingSnippets = result.filter(
+      (message) =>
+        message.role === "system" &&
+        typeof message.content === "string" &&
+        message.content.startsWith(AGENTS_SNIPPET_LABEL),
+    );
+    expect(survivingSnippets).toEqual([newestSnippet]);
+  });
+
   it("summarizes when capping cannot free enough space", async () => {
     // All bulk is conversational prose — capping removes nothing — and the
     // threshold sits below the prompt envelope, so no heuristic can be

@@ -1,6 +1,7 @@
 import { generateText, type LanguageModel, type ModelMessage, type TelemetryOptions } from "ai";
 
 import {
+  AGENTS_SNIPPET_LABEL,
   COMPACTION_CHECKPOINT_MARKER,
   COMPACTION_PROMPT_ENVELOPE,
   COMPACTION_RESUMPTION_MESSAGE,
@@ -451,23 +452,39 @@ function splitMessagesForCompaction(
   readonly older: ModelMessage[];
   readonly recent: ModelMessage[];
 } {
-  if (keep <= 0) {
-    return {
-      older: [...messages],
-      recent: [],
-    };
-  }
-
   // The recent tail survives verbatim, so it must not open with tool results
   // whose tool calls fall in the older region — providers reject a tool_result
   // without its preceding tool_use. Snap such messages into the older region.
-  let split = messages.length - keep;
+  let split = keep <= 0 ? messages.length : messages.length - keep;
   while (split < messages.length && messages[split]?.role === "tool") {
     split += 1;
   }
 
+  // Agent snippets are snapshots of the same framework state. Drop every
+  // older snapshot and pin the newest one into the retained region.
+  const newestAgentsSnippetIndex = messages.findLastIndex(isAgentsSnippetMessage);
+  const older = messages.slice(0, split).filter((message) => !isAgentsSnippetMessage(message));
+  const recent = messages
+    .slice(split)
+    .filter(
+      (message, index) =>
+        !isAgentsSnippetMessage(message) || split + index === newestAgentsSnippetIndex,
+    );
+  const newestAgentsSnippet = messages[newestAgentsSnippetIndex];
+  if (newestAgentsSnippet !== undefined && newestAgentsSnippetIndex < split) {
+    recent.unshift(newestAgentsSnippet);
+  }
+
   return {
-    older: messages.slice(0, split),
-    recent: messages.slice(split),
+    older,
+    recent,
   };
+}
+
+function isAgentsSnippetMessage(message: ModelMessage): boolean {
+  return (
+    message.role === "system" &&
+    typeof message.content === "string" &&
+    message.content.startsWith(AGENTS_SNIPPET_LABEL)
+  );
 }

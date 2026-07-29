@@ -17,6 +17,8 @@ import { getTodoCompactionMessage } from "#runtime/framework-tools/todo.js";
  */
 export function preserveFrameworkStateOnCompaction(): readonly ModelMessage[] {
   clearReadFileState();
+  // Agent handles live on session.state and reach the model through a labeled
+  // history snippet deduped by compaction; no re-injection is needed here.
   const todo = getTodoCompactionMessage();
   return todo === undefined ? [] : [todo];
 }

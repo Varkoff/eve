@@ -11,8 +11,10 @@ The root session receives `agent` by default. The model calls it to delegate a t
 
 ```ts
 {
-  message: string;       // everything the child needs; it does not see the parent's history
-  outputSchema?: object; // when set, the child runs in task mode and returns structured output
+  description: string;     // a short (3-5 word) description of the task
+  message: string;         // everything the child needs; it does not see the parent's history
+  agentId?: string;        // continue a child via agentId instead of starting a new one
+  outputSchema?: object;   // when set, the child runs in task mode and returns structured output
 }
 ```
 
@@ -95,8 +97,10 @@ A declared subagent's tool name is the bare path-derived name, with no prefix. `
 
 ```ts
 {
-  message: string;       // all context the child needs; it never sees the parent's history
-  outputSchema?: object; // when set, the child runs in task mode and returns structured output
+  description: string;     // a short (3-5 word) description of the task
+  message: string;         // all context the child needs; it never sees the parent's history
+  agentId?: string;        // continue a child via agentId instead of starting a new one
+  outputSchema?: object;   // when set, the child runs in task mode and returns structured output
 }
 ```
 
@@ -109,6 +113,14 @@ Each delegated subagent spins up its own child session and stream. The parent st
 Cancelling a parent turn also requests cancellation of every active child it started, recursively through nested and remote subagents. Each affected session emits its own `turn.cancelled` → `session.waiting` boundary; the cancelled parent does not synthesize tool results or emit `subagent.completed`. A child that already completed or parked has no active turn and is a benign no-op.
 
 Subagent model calls automatically retry classified transient provider failures, including overload errors delivered after a stream starts. eve makes at most three fresh model-call attempts, repeating only the current uncommitted call so completed earlier steps, tool results, and sandbox work remain available to the child. Other recoverable task errors fall back to Workflow's durable step retry from the last committed session snapshot. Exhausting the transient model-call attempts or the dedicated empty-response reissue returns one failed task result instead of stacking both retry budgets; terminal errors fail immediately.
+
+## Agent messaging
+
+After a conversation-mode child answers, it parks instead of terminating. The `<agents>` block in the parent's context lists each parked child's `agentId`. Pass that `agentId` to the same subagent tool with a new `message` to continue the existing child session; omit it to start a new child.
+
+After each subagent result, eve adds a labeled system message containing an `<agents>` block to the parent's history. This block lists the agents the parent can continue via `agentId`, along with their latest status. Context compaction keeps only the newest copy of the block.
+
+The parent holds agent handles only for its session lifetime. When the parent session ends, eve terminates its children. For [remote agents](./guides/remote-agents), both deployments must run the same eve version to use agent messaging.
 
 ## When to split
 

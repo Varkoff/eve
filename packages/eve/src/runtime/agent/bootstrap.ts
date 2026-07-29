@@ -1,3 +1,5 @@
+import { AGENT_TOOL_NAME } from "#runtime/framework-tools/agent.js";
+import { ROOT_RUNTIME_AGENT_NODE_ID } from "#runtime/graph.js";
 import { composeRuntimeBasePrompt } from "#runtime/prompt/compose.js";
 import type { PreparedRuntimeTool } from "#runtime/sessions/turn.js";
 import type { ResolvedAgent } from "#runtime/types.js";
@@ -73,6 +75,12 @@ export function createResolvedRuntimeTurnAgent(input: {
     instructions: composeRuntimeBasePrompt({
       connections: agent.connections,
       instructions: agent.instructions,
+      // Mirrors node-step's root `agent` tool condition: the framework tool is
+      // injected after graph resolution, so declared tools alone under-count.
+      subagentsAvailable:
+        input.tools.some((tool) => tool.kind === "subagent" || tool.kind === "remote") ||
+        (input.nodeId === ROOT_RUNTIME_AGENT_NODE_ID &&
+          !agent.disabledFrameworkTools.includes(AGENT_TOOL_NAME)),
       toolsAvailable: input.tools.length > 0,
       workspaceSpec: agent.workspaceSpec,
     }),
