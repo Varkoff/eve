@@ -3,11 +3,14 @@ import {
   getRegistryItems,
   searchRegistries,
   type RegistryConfig,
+  type RegistrySearchItem,
 } from "#compiled/shadcn-registry/index.js";
 import semver from "#compiled/semver/index.js";
 import { z } from "#compiled/zod/index.js";
 import { resolveInstalledPackageInfo } from "#internal/application/package.js";
+import { detectPackageManager } from "#setup/package-manager.js";
 import { isEveProject } from "#setup/scaffold/index.js";
+import { applyPackageManagerWorkspaceConfiguration } from "#setup/scaffold/workspace-root.js";
 
 import { NOT_AN_AGENT_MESSAGE } from "./preconditions.js";
 import type { runRegistrySetupCommand } from "./registry-setup-command.js";
@@ -20,12 +23,32 @@ export interface RegistryCommandLogger {
 
 export interface AddCommandOptions {
   overwrite?: boolean;
+  /** Suppresses the registry SDK's terminal-native progress output. */
+  silent?: boolean;
+  /** Temporarily hands the terminal to the registry SDK and its package manager. */
+  withInheritedStdio?<T>(task: () => Promise<T>): Promise<T>;
   /** Arguments forwarded to a trusted setup command after installation. */
   setupArgs?: string[];
 }
 
 export interface AddCommandDependencies {
   loadSetupCommandRunner(): Promise<typeof runRegistrySetupCommand>;
+}
+
+/** One discoverable item from an eve-compatible registry catalog. */
+export interface RegistryCatalogItem {
+  address: string;
+  name: string;
+  type?: string;
+  description?: string;
+  source: string;
+}
+
+/** Catalog items plus non-fatal failures from the registry sources queried. */
+export interface RegistryCatalogResult {
+  items: RegistryCatalogItem[];
+  total: number;
+  errors: Array<{ message: string; registry: string }>;
 }
 
 const defaultAddCommandDependencies: AddCommandDependencies = {
@@ -50,11 +73,13 @@ export async function installOfficialRegistryItem(
   item: string,
   options: AddCommandOptions = {},
 ): Promise<void> {
+  await prepareOfficialItemInstall(appRoot, item);
   const config = await readRegistryConfig(appRoot);
   await addRegistryItems([itemAddress(item)], { ...options, config, cwd: appRoot });
 }
 
 const EveRegistryItemMetadataSchema = z.object({
+  name: z.string().optional(),
   meta: z
     .object({
       eve: z
@@ -63,7 +88,22 @@ const EveRegistryItemMetadataSchema = z.object({
           setup: z
             .object({
               command: z.literal("eve"),
-              args: z.tuple([z.literal("integration"), z.literal("setup"), z.string().min(1)]),
+              args: z.union([
+                z.tuple([z.literal("integration"), z.literal("setup"), z.string().min(1)]),
+                z.tuple([
+                  z.literal("integration"),
+                  z.literal("connect"),
+                  z.string().min(1),
+                  z.string().min(1),
+                ]),
+                z.tuple([
+                  z.literal("integration"),
+                  z.literal("connect"),
+                  z.string().min(1),
+                  z.string().min(1),
+                  z.string().min(1),
+                ]),
+              ]),
             })
             .optional(),
         })
@@ -72,8 +112,17 @@ const EveRegistryItemMetadataSchema = z.object({
     .optional(),
 });
 
-function eveMetadataFromRegistryItem(item: unknown) {
-  return EveRegistryItemMetadataSchema.parse(item).meta?.eve;
+function officialItemFromRegistryItem(item: unknown) {
+  return EveRegistryItemMetadataSchema.parse(item);
+}
+
+async function prepareOfficialItemInstall(appRoot: string, itemName: string | undefined) {
+  if (itemName !== "channel/web") return;
+  const packageManager = await detectPackageManager(appRoot);
+  await applyPackageManagerWorkspaceConfiguration({
+    packageManager: packageManager.kind,
+    projectRoot: appRoot,
+  });
 }
 
 function assertCompatibleEveVersion(requiredVersion: string | undefined): void {
@@ -149,20 +198,52 @@ function printSearchResults(
   }
 }
 
+async function searchRegistryCatalog(
+  appRoot: string,
+  options: { query?: string; source?: string },
+) {
+  validateRegistrySource(options.source);
+  const config = await readRegistryConfig(appRoot);
+  const sources = options.source
+    ? [options.source]
+    : [OFFICIAL_CATALOG, ...configuredRegistrySources(config)];
+  const result = await searchRegistries(sources, {
+    config,
+    continueOnError: sources.length > 1,
+    query: options.query,
+  });
+  return { result, sources };
+}
+
+/** Browses all configured catalogs, or one namespace or URL source. */
+export async function browseRegistryCatalog(
+  appRoot: string,
+  options: { query?: string; source?: string } = {},
+): Promise<RegistryCatalogResult> {
+  const { result } = await searchRegistryCatalog(appRoot, options);
+  return {
+    items: result.items.map((item: RegistrySearchItem) => {
+      const catalogItem: RegistryCatalogItem = {
+        address: item.registry === OFFICIAL_CATALOG ? item.name : item.addCommandArgument,
+        name: item.name,
+        source: item.registry === OFFICIAL_CATALOG ? "Vercel" : item.registry,
+      };
+      if (item.type !== undefined) catalogItem.type = item.type;
+      if (item.description !== undefined) catalogItem.description = item.description;
+      return catalogItem;
+    }),
+    total: result.pagination.total,
+    errors: result.errors ?? [],
+  };
+}
+
 async function browseRegistryItems(
   logger: RegistryCommandLogger,
   appRoot: string,
   query: string | undefined,
   source: string | undefined,
 ): Promise<void> {
-  validateRegistrySource(source);
-  const config = await readRegistryConfig(appRoot);
-  const sources = source ? [source] : [OFFICIAL_CATALOG, ...configuredRegistrySources(config)];
-  const result = await searchRegistries(sources, {
-    config,
-    continueOnError: sources.length > 1,
-    query,
-  });
+  const { result, sources } = await searchRegistryCatalog(appRoot, { query, source });
   const errors = result.errors ?? [];
   if (errors.length < sources.length) {
     printSearchResults(logger, result, { query, sources });
@@ -173,6 +254,48 @@ async function browseRegistryItems(
   if (errors.length > 0) process.exitCode = 1;
 }
 
+/** Resolves one official, configured, or URL-addressed item manifest. */
+export async function getRegistryItemManifest(appRoot: string, item: string): Promise<unknown> {
+  const config = await readRegistryConfig(appRoot);
+  const items = await getRegistryItems([itemAddress(item)], { config });
+  return items.length === 1 ? items[0] : items;
+}
+
+/** Installs one official, configured, or URL-addressed registry item. */
+export async function installRegistryItem(
+  appRoot: string,
+  item: string,
+  options: AddCommandOptions = {},
+  dependencies: AddCommandDependencies = defaultAddCommandDependencies,
+): Promise<void> {
+  const config = await readRegistryConfig(appRoot);
+  const address = itemAddress(item);
+  const [registryItem] = await getRegistryItems([address], { config });
+  const officialItem = isOfficialItemAddress(address)
+    ? officialItemFromRegistryItem(registryItem)
+    : undefined;
+  const eveMetadata = officialItem?.meta?.eve;
+  assertCompatibleEveVersion(eveMetadata?.requires);
+  await prepareOfficialItemInstall(appRoot, officialItem?.name);
+
+  const installOptions = {
+    config,
+    cwd: appRoot,
+    overwrite: options.overwrite,
+    silent: options.silent,
+  };
+  const addItems = () => addRegistryItems([address], installOptions);
+  await (options.withInheritedStdio?.(addItems) ?? addItems());
+
+  if (eveMetadata?.setup !== undefined) {
+    const runSetupCommand = await dependencies.loadSetupCommandRunner();
+    await runSetupCommand(appRoot, {
+      ...eveMetadata.setup,
+      args: [...eveMetadata.setup.args, ...(options.setupArgs ?? [])],
+    });
+  }
+}
+
 /** Installs an official, configured, or URL-addressed registry item. */
 export async function runAddCommand(
   logger: RegistryCommandLogger,
@@ -181,26 +304,9 @@ export async function runAddCommand(
   options: AddCommandOptions,
   dependencies: AddCommandDependencies = defaultAddCommandDependencies,
 ): Promise<void> {
-  await runRegistryAction(logger, appRoot, async () => {
-    const config = await readRegistryConfig(appRoot);
-    const address = itemAddress(item);
-    const [registryItem] = await getRegistryItems([address], { config });
-    const eveMetadata = isOfficialItemAddress(address)
-      ? eveMetadataFromRegistryItem(registryItem)
-      : undefined;
-    assertCompatibleEveVersion(eveMetadata?.requires);
-
-    const installOptions = { config, cwd: appRoot, overwrite: options.overwrite };
-    await addRegistryItems([address], installOptions);
-
-    if (eveMetadata?.setup !== undefined) {
-      const runSetupCommand = await dependencies.loadSetupCommandRunner();
-      await runSetupCommand(appRoot, {
-        ...eveMetadata.setup,
-        args: [...eveMetadata.setup.args, ...(options.setupArgs ?? [])],
-      });
-    }
-  });
+  await runRegistryAction(logger, appRoot, () =>
+    installRegistryItem(appRoot, item, options, dependencies),
+  );
 }
 
 /** Adds registry namespace mappings to the project's package.json. */
@@ -253,8 +359,6 @@ export async function runRegistryViewCommand(
   item: string,
 ): Promise<void> {
   await runRegistryAction(logger, appRoot, async () => {
-    const config = await readRegistryConfig(appRoot);
-    const items = await getRegistryItems([itemAddress(item)], { config });
-    logger.log(JSON.stringify(items.length === 1 ? items[0] : items, null, 2));
+    logger.log(JSON.stringify(await getRegistryItemManifest(appRoot, item), null, 2));
   });
 }

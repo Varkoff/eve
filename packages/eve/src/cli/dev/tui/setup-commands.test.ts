@@ -36,6 +36,7 @@ function fakePanelRenderer(): TuiSetupCommandRenderer & {
     setStatus: vi.fn(),
     renderLine: vi.fn(),
     renderOutput: vi.fn(),
+    withInheritedStdio: (task) => task(),
     waitForInterrupt: () => ({
       promise: new Promise<void>((resolve) => {
         fire = resolve;
@@ -67,6 +68,10 @@ function fakeFlows(overrides: Partial<TuiSetupFlows> = {}): TuiSetupFlows {
       kind: "done",
       addedConnections: [],
     })),
+    runRegistryFlow: vi.fn<TuiSetupFlows["runRegistryFlow"]>(async () => ({
+      kind: "done",
+      addedItems: [],
+    })),
     runDeployFlow: vi.fn<TuiSetupFlows["runDeployFlow"]>(async () => ({
       kind: "deployed",
       productionUrl: "https://my-agent.vercel.app",
@@ -76,7 +81,7 @@ function fakeFlows(overrides: Partial<TuiSetupFlows> = {}): TuiSetupFlows {
 }
 
 function run(input: {
-  command: "vc:install" | "vc:login" | "model" | "channels" | "connect" | "deploy";
+  command: "vc:install" | "vc:login" | "model" | "channels" | "connect" | "add" | "deploy";
   flows: TuiSetupFlows;
   renderer?: TuiSetupCommandRenderer;
   initialModelStep?: "provider";
@@ -111,6 +116,7 @@ describe("runTuiSetupCommand", () => {
       model: "pulse",
       channels: "pulse",
       connect: "pulse",
+      add: "pulse",
       deploy: "spinner",
     });
   });
@@ -488,6 +494,25 @@ describe("runTuiSetupCommand", () => {
       effect,
     });
     expect(runConnectionsFlow).toHaveBeenCalledWith(expect.objectContaining({ appRoot: APP_ROOT }));
+  });
+
+  it.each([
+    [
+      "added",
+      { kind: "done", addedItems: ["extension/browser"] },
+      "Registry items added: extension/browser.",
+    ],
+    ["empty", { kind: "done", addedItems: [] }, "No registry items added."],
+    ["cancelled", { kind: "cancelled" }, "/add dismissed."],
+  ] as const)("reports a %s registry flow", async (_case, result, message) => {
+    const runRegistryFlow = vi.fn(async () => result);
+    const outcome = await run({ command: "add", flows: fakeFlows({ runRegistryFlow }) });
+    expect(outcome).toEqual({
+      message,
+      ...(result.kind === "done" && result.addedItems.length > 0 ? { tone: "success" } : {}),
+      preserveFlowDiagnostics: true,
+    });
+    expect(runRegistryFlow).toHaveBeenCalledWith(expect.objectContaining({ appRoot: APP_ROOT }));
   });
 
   it("keeps deploy pending when channel files landed before a sub-flow failure", async () => {

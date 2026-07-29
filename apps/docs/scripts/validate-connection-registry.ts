@@ -13,6 +13,7 @@ interface RegistryItem {
   dependencies?: string[];
   envVars?: Record<string, string>;
   files?: RegistryFile[];
+  meta?: { eve?: { setup?: { command?: string; args?: string[] } } };
 }
 
 interface Registry {
@@ -51,7 +52,20 @@ for (const item of items) {
         'Registry item "connection/browser-use" must declare its API key without Vercel Connect.',
       );
     }
-  } else if (!item.dependencies?.includes("@vercel/connect")) {
-    throw new Error(`Registry item "${item.name}" must depend on @vercel/connect.`);
+  } else {
+    if (!item.dependencies?.includes("@vercel/connect")) {
+      throw new Error(`Registry item "${item.name}" must depend on @vercel/connect.`);
+    }
+    const setup = item.meta?.eve?.setup;
+    if (
+      setup?.command !== "eve" ||
+      setup.args?.[0] !== "integration" ||
+      setup.args[1] !== "connect" ||
+      setup.args[2] !== slug ||
+      typeof setup.args[3] !== "string" ||
+      setup.args.length > 5
+    ) {
+      throw new Error(`Registry item "${item.name}" must delegate to eve integration connect.`);
+    }
   }
 }

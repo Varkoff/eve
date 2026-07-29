@@ -2,7 +2,7 @@ import type { ChannelSetupChoice, ChannelSetupChoiceOptions } from "#setup/cli/i
 import type { SearchActionOption } from "#setup/cli/select-state.js";
 import type { ModelSettingsRequest, ModelSettingsResult } from "#setup/flows/model.js";
 import type { ProviderPickerChoice, ProviderPickerRequest } from "#setup/flows/provider.js";
-import type { SelectNotice } from "#setup/prompter.js";
+import type { SelectMetadata, SelectNotice } from "#setup/prompter.js";
 
 import type { SetupPanelOption } from "./setup-panel.js";
 
@@ -18,6 +18,8 @@ export type SetupFlowStatus = string | { kind: "external-action"; text: string; 
 
 interface SetupSelectRequestBase {
   message: string;
+  description?: string;
+  metadata?: readonly SelectMetadata[];
   options: readonly SetupPanelOption[];
   notices?: readonly SelectNotice[];
 }
@@ -102,6 +104,8 @@ export interface SetupFlowRenderer {
   setStatus(status: SetupFlowStatus | undefined): void;
   renderLine(text: string, tone: "info" | "success" | "warning" | "error"): void;
   renderOutput(text: string): void;
+  /** Temporarily restores the terminal while a child process inherits stdio. */
+  withInheritedStdio<T>(task: () => Promise<T>): Promise<T>;
   /**
    * Arms a key trap for the flow's working state — the status indicator between
    * questions, where no prompt is consuming keys. Ctrl-C or Esc resolves the
@@ -123,4 +127,5 @@ export type SetupFlowPrompterRenderer = Pick<
   | "setStatus"
   | "renderLine"
   | "renderOutput"
+  | "withInheritedStdio"
 >;

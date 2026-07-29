@@ -217,13 +217,13 @@ describe("TerminalRenderer (inline scrollback)", () => {
       name: "Weather Agent",
       serverUrl: "http://localhost:3000",
       info: agentInfoWithModel("gpt-5"),
-      tip: "Use /channels to add more ways to reach your agent.",
+      tip: "Use eve add to install integrations from the registry.",
     });
     renderer.shutdown();
 
     const snapshot = screen.snapshot();
     expect(snapshot).toContain("eve Weather Agent");
-    expect(snapshot).toContain("Use /channels to add more ways to reach your agent.");
+    expect(snapshot).toContain("Use eve add to install integrations from the registry.");
     // The model lives on the status line, not the header; the old config
     // rows and key hints are gone.
     expect(snapshot).not.toContain("gpt-5");
@@ -1448,6 +1448,16 @@ describe("TerminalRenderer (inline scrollback)", () => {
     expect(screen.snapshot()).toContain("\u23bf  /model dismissed.");
   });
 
+  it("promotes a successful command outcome to a top-level green check", () => {
+    const { screen, renderer } = makeRenderer();
+    renderer.renderCommandResult("Registry items added: channel/discord.", "success");
+    renderer.shutdown();
+
+    expect(screen.snapshot()).toContain("✓ Registry items added: channel/discord.");
+    expect(screen.snapshot()).not.toContain("⎿");
+    expect(screen.rawOutput()).toContain("\u001b[32m✓\u001b[39m");
+  });
+
   it("marks a failed automatic command and keeps its multiline outcome in one result block", () => {
     const { screen, renderer } = makeRenderer();
     renderer.renderCommandInvocation("/vc:login", "failed");
@@ -2446,9 +2456,9 @@ describe("TerminalRenderer (inline scrollback)", () => {
     const { screen, input, renderer } = makeRenderer();
 
     const prompt = renderer.readPrompt();
-    input.type("/channels");
+    input.type("/add");
     // The ANSI blue open (34) wraps the typed command in the painted row.
-    expect(screen.rawOutput()).toContain("[34m/channels");
+    expect(screen.rawOutput()).toContain("[34m/add");
     input.enter();
     await prompt;
     renderer.shutdown();
@@ -2459,7 +2469,7 @@ describe("TerminalRenderer (inline scrollback)", () => {
 
     const prompt = renderer.readPrompt();
     // Never passes through a known command, even if painted per keystroke
-    // ("/li…" is not "/channels").
+    // ("/li…" is not a known command).
     input.type("/lin is not a command");
     expect(screen.rawOutput()).not.toContain("[34m");
     input.enter();
@@ -3766,6 +3776,24 @@ describe("TerminalRenderer setup panel", () => {
 });
 
 describe("TerminalRenderer setup flow session", () => {
+  it("restores the terminal while a child process inherits stdio", async () => {
+    const { screen, input, renderer } = makeRenderer();
+
+    renderer.renderNotice("anchor");
+    renderer.setupFlow.begin("Add integration", "pulse");
+    let inherited = false;
+    await renderer.setupFlow.withInheritedStdio(async () => {
+      inherited = true;
+      input.pause();
+    });
+
+    expect(inherited).toBe(true);
+    expect(input.resumeCalls).toBe(2);
+    expect(screen.snapshot()).toContain("Add integration");
+    renderer.setupFlow.end();
+    renderer.shutdown();
+  });
+
   it("uses the build-phase pulse for pulse setup flows", () => {
     vi.useFakeTimers();
     try {
@@ -4278,14 +4306,14 @@ describe("TerminalRenderer command echo spacing", () => {
 
     renderer.renderNotice("assistant said something");
     const prompt = renderer.readPrompt();
-    input.type("/channels");
+    input.type("/connect");
     input.enter();
     await prompt;
     renderer.renderCommandResult("Project linked.");
     renderer.shutdown();
 
     const lines = screen.snapshot().split("\n");
-    const echoIndex = lines.findIndex((line) => line.includes("│ /channels"));
+    const echoIndex = lines.findIndex((line) => line.includes("│ /connect"));
     expect(echoIndex).toBeGreaterThan(0);
     expect(lines[echoIndex - 1]).toBe("");
     const resultIndex = lines.findIndex((line) => line.includes("⎿  Project linked."));
@@ -4348,13 +4376,13 @@ describe("TerminalRenderer command typeahead", () => {
     const { screen, input, renderer } = makeRenderer();
 
     const prompt = renderer.readPrompt();
-    input.type("/chan");
+    input.type("/ad");
     input.enter();
-    expect(await prompt).toBe("/channels");
+    expect(await prompt).toBe("/add");
     renderer.shutdown();
 
-    expect(screen.snapshot()).toContain("│ /channels");
-    expect(screen.snapshot()).not.toContain("❯ /channels");
+    expect(screen.snapshot()).toContain("│ /add");
+    expect(screen.snapshot()).not.toContain("❯ /add");
   });
 
   it("submits an alias as typed instead of canonicalizing it", async () => {

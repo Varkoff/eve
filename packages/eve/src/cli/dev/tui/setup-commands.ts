@@ -9,6 +9,7 @@ import {
 import { runLoginFlow, type LoginFlowResult } from "#setup/flows/login.js";
 import { runModelFlow, type ModelProviderOutcome } from "#setup/flows/model.js";
 import { runProviderFlow, type ProviderPicker } from "#setup/flows/provider.js";
+import { runRegistryFlow } from "#setup/flows/registry.js";
 import { openUrl } from "#setup/primitives/open-url.js";
 import type { Prompter } from "#setup/prompter.js";
 import { slackMessageDeepLink } from "#setup/slack-connect.js";
@@ -32,6 +33,7 @@ export const SETUP_FLOW_CONFIG = {
   model: { title: "Configure the agent model", indicator: "pulse" },
   channels: { title: "Agent channels", indicator: "pulse" },
   connect: { title: "Agent connections", indicator: "pulse" },
+  add: { title: "Add integration", indicator: "pulse" },
   deploy: { title: "Deploy to Vercel", indicator: "spinner" },
 } satisfies Record<TuiSetupCommand, { title: string; indicator: SetupFlowIndicator }>;
 
@@ -64,11 +66,14 @@ export interface TuiSetupFlows {
   runModelFlow: typeof runModelFlow;
   runChannelsFlow: typeof runChannelsFlow;
   runConnectionsFlow: typeof runConnectionsFlow;
+  runRegistryFlow: typeof runRegistryFlow;
   runDeployFlow: typeof runDeployFlow;
 }
 
 export interface TuiSetupCommandResult {
   message: string;
+  /** Promotes a successful outcome to a top-level green check. */
+  tone?: "success";
   /** Keep warning/error lines after the bordered panel closes. */
   preserveFlowDiagnostics: boolean;
   /** Status refresh required after the command settles. */
@@ -111,11 +116,12 @@ function muteableRenderer(
     renderOutput: (text) => {
       if (!isMuted()) renderer.renderOutput(text);
     },
+    withInheritedStdio: (task) => renderer.withInheritedStdio(task),
   };
 }
 
 /**
- * Runs one TUI setup command (/model, /channels, /connect, /deploy) over the
+ * Runs one TUI setup command (/model, /channels, /connect, /add, /deploy) over the
  * shared setup flows, asking through the TUI's own bordered panel. Never throws:
  * every outcome — done, cancelled, failed — folds into the returned command
  * result. Ctrl-C or Esc on the working indicator (no question open) aborts the
@@ -166,6 +172,7 @@ async function executeSetupCommand(
     runModelFlow,
     runChannelsFlow,
     runConnectionsFlow,
+    runRegistryFlow,
     runDeployFlow,
     ...input.flows,
   };
@@ -289,6 +296,20 @@ async function executeSetupCommand(
                   : { kind: "connection-added" },
             };
         }
+      }
+      case "add": {
+        const result = await flows.runRegistryFlow({ appRoot, prompter, signal });
+        if (result.kind === "cancelled") {
+          return { message: "/add dismissed.", preserveFlowDiagnostics: true };
+        }
+        if (result.addedItems.length > 0) {
+          return {
+            message: `Registry items added: ${result.addedItems.join(", ")}.`,
+            tone: "success",
+            preserveFlowDiagnostics: true,
+          };
+        }
+        return { message: "No registry items added.", preserveFlowDiagnostics: true };
       }
       case "deploy": {
         const result = await flows.runDeployFlow({ appRoot, prompter, interactive: true, signal });

@@ -4,7 +4,10 @@ import { createFakePrompter } from "#internal/testing/fake-prompter.js";
 import type { AddChannelsDeps } from "#setup/boxes/add-channels.js";
 import { deriveSlackConnectorSlug } from "#setup/scaffold/index.js";
 
-import { runIntegrationSetupCommand } from "./integration-setup.js";
+import {
+  parseIntegrationSetupInvocation,
+  runIntegrationSetupCommand,
+} from "./integration-setup.js";
 import type { RegistryCommandLogger } from "./registry.js";
 
 const { isEveProject } = vi.hoisted(() => ({ isEveProject: vi.fn(async () => true) }));
@@ -45,6 +48,38 @@ function addChannelsDeps(): AddChannelsDeps {
 
 afterEach(() => {
   process.exitCode = undefined;
+});
+
+describe("parseIntegrationSetupInvocation", () => {
+  it("parses trusted registry setup invocations", () => {
+    expect(
+      parseIntegrationSetupInvocation({
+        command: "eve",
+        args: ["integration", "setup", "web", "--yes"],
+      }),
+    ).toEqual({ kind: "channel", channel: "web", yes: true });
+  });
+
+  it("parses connection setup invocations", () => {
+    expect(
+      parseIntegrationSetupInvocation({
+        command: "eve",
+        args: ["integration", "connect", "linear", "mcp.linear.app"],
+      }),
+    ).toEqual({ kind: "connection", slug: "linear", service: "mcp.linear.app" });
+  });
+
+  it("rejects commands and flags outside the trusted grammar", () => {
+    expect(
+      parseIntegrationSetupInvocation({ command: "sh", args: ["integration", "setup", "web"] }),
+    ).toBeUndefined();
+    expect(
+      parseIntegrationSetupInvocation({
+        command: "eve",
+        args: ["integration", "setup", "web", "--force"],
+      }),
+    ).toBeUndefined();
+  });
 });
 
 describe("runIntegrationSetupCommand", () => {

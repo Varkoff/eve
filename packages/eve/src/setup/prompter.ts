@@ -89,9 +89,19 @@ export interface SelectNotice {
   text: string;
 }
 
+/** One labeled fact rendered between a select question's description and options. */
+export interface SelectMetadata {
+  label: string;
+  value: string;
+}
+
 /** Options common to every {@link Prompter.select} call. */
 export interface SelectCommonOptions<T extends PrompterValue> {
   message: string;
+  /** Inert context rendered beneath the question heading and above its options. */
+  description?: string;
+  /** Labeled facts rendered beneath the description and above the options. */
+  metadata?: readonly SelectMetadata[];
   options: SelectOption<T>[];
   /**
    * Add a type-ahead filter line. The filter is a case-insensitive substring
@@ -238,6 +248,9 @@ export interface Prompter {
 
   /** Prints a final green ● end-cap with the message. */
   outro(message: string): void;
+
+  /** Temporarily hands terminal ownership to a command that inherits stdio. */
+  withInheritedStdio?<T>(task: () => Promise<T>): Promise<T>;
 
   log: {
     message(text: string): void;
@@ -447,6 +460,12 @@ export function createPrompter(): Prompter {
     ): Promise<T | T[]> {
       log.settle();
       printNotices(opts.notices);
+      if (opts.description !== undefined) {
+        process.stdout.write(formatRailLine(pc.dim(opts.description), pc, process.stdout));
+      }
+      for (const { label, value } of opts.metadata ?? []) {
+        process.stdout.write(formatRailLine(`${pc.dim(`${label}:`)} ${value}`, pc, process.stdout));
+      }
       const result = guardCancel(
         await runSelectComponent<T>({
           message: opts.message,

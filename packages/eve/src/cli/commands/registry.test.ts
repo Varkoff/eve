@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  installOfficialRegistryItem,
   runAddCommand,
   runRegistryAddCommand,
   runRegistryListCommand,
@@ -11,6 +12,8 @@ import {
 
 const {
   addRegistryItems,
+  applyPackageManagerWorkspaceConfiguration,
+  detectPackageManager,
   getRegistryItems,
   isEveProject,
   readFile,
@@ -19,6 +22,8 @@ const {
   writeFile,
 } = vi.hoisted(() => ({
   addRegistryItems: vi.fn(),
+  applyPackageManagerWorkspaceConfiguration: vi.fn(),
+  detectPackageManager: vi.fn(),
   getRegistryItems: vi.fn(),
   isEveProject: vi.fn(),
   readFile: vi.fn(),
@@ -34,6 +39,8 @@ vi.mock("#compiled/shadcn-registry/index.js", () => ({
 }));
 
 vi.mock("#setup/scaffold/index.js", () => ({ isEveProject }));
+vi.mock("#setup/package-manager.js", () => ({ detectPackageManager }));
+vi.mock("#setup/scaffold/workspace-root.js", () => ({ applyPackageManagerWorkspaceConfiguration }));
 vi.mock("#internal/application/package.js", () => ({ resolveInstalledPackageInfo }));
 vi.mock("node:fs/promises", () => ({ readFile, writeFile }));
 
@@ -52,6 +59,7 @@ describe("registry commands", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     isEveProject.mockResolvedValue(true);
+    detectPackageManager.mockResolvedValue({ kind: "pnpm", source: "lockfile" });
     readFile.mockResolvedValue(
       JSON.stringify({
         name: "project",
@@ -62,6 +70,18 @@ describe("registry commands", () => {
 
   afterEach(() => {
     process.exitCode = undefined;
+  });
+
+  it("prepares Web Chat policy for setup-owned official installs", async () => {
+    await installOfficialRegistryItem("/project", "channel/web");
+
+    expect(applyPackageManagerWorkspaceConfiguration).toHaveBeenCalledWith({
+      packageManager: "pnpm",
+      projectRoot: "/project",
+    });
+    expect(applyPackageManagerWorkspaceConfiguration.mock.invocationCallOrder[0]).toBeLessThan(
+      addRegistryItems.mock.invocationCallOrder[0]!,
+    );
   });
 
   it("installs official items through the registry SDK", async () => {
@@ -83,8 +103,30 @@ describe("registry commands", () => {
       },
       cwd: "/project",
       overwrite: true,
+      silent: undefined,
     });
     expect(logger.errors).toEqual([]);
+  });
+
+  it("prepares Web Chat's package-manager policy before installing dependencies", async () => {
+    const logger = createLogger();
+    getRegistryItems.mockResolvedValue([
+      {
+        name: "channel/web",
+        type: "registry:item",
+        meta: { eve: { setup: { command: "eve", args: ["integration", "setup", "web"] } } },
+      },
+    ]);
+
+    await runAddCommand(logger, "/project", "channel/web", {});
+
+    expect(applyPackageManagerWorkspaceConfiguration).toHaveBeenCalledWith({
+      packageManager: "pnpm",
+      projectRoot: "/project",
+    });
+    expect(applyPackageManagerWorkspaceConfiguration.mock.invocationCallOrder[0]).toBeLessThan(
+      addRegistryItems.mock.invocationCallOrder[0]!,
+    );
   });
 
   it.each(["web", "slack"] as const)(
@@ -171,6 +213,7 @@ describe("registry commands", () => {
 
     expect(runSetupCommand).not.toHaveBeenCalled();
     expect(addRegistryItems).toHaveBeenCalledOnce();
+    expect(applyPackageManagerWorkspaceConfiguration).not.toHaveBeenCalled();
   });
 
   it("rejects invalid official setup metadata before installation", async () => {

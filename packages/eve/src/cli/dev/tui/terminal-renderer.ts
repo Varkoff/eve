@@ -560,6 +560,7 @@ export class TerminalRenderer implements AgentTUIRenderer {
     setStatus: (text) => this.#setFlowStatus(text),
     renderLine: (text, tone) => this.#renderFlowLine(text, tone),
     renderOutput: (text) => this.#renderFlowOutput(text),
+    withInheritedStdio: (task) => this.#withInheritedStdio(task),
     waitForInterrupt: () => this.#waitForFlowInterrupt(),
   };
 
@@ -1607,15 +1608,16 @@ export class TerminalRenderer implements AgentTUIRenderer {
     this.#paint();
   }
 
-  /**
-   * Commits one command's outcome under its invocation with the elbow
-   * connector (` ⎿  /model cancelled.`), Claude Code's sub-result grammar.
-   */
-  renderCommandResult(text: string): void {
+  /** Commits one command outcome, promoting explicit success to a top-level check. */
+  renderCommandResult(text: string, tone?: "success"): void {
     const content = stripTerminalControls(text);
     if (content.trim().length === 0) return;
     this.#start();
-    this.#pushBlock({ kind: "result", body: content, live: false });
+    this.#pushBlock(
+      tone === "success"
+        ? { kind: "flow", title: "success", body: content, live: false }
+        : { kind: "result", body: content, live: false },
+    );
     this.#paint();
   }
 
@@ -2549,6 +2551,37 @@ export class TerminalRenderer implements AgentTUIRenderer {
     flow.outputBuffer.push(content);
     if (flow.outputBuffer.length > FLOW_OUTPUT_BUFFER_CAP) flow.outputBuffer.shift();
     this.#paint();
+  }
+
+  /** Gives an interactive subprocess the real terminal, then restores the live region. */
+  async #withInheritedStdio<T>(task: () => Promise<T>): Promise<T> {
+    this.#flowInterrupt = undefined;
+    this.#disarmFlowIdleTrap();
+    this.#detachInput();
+    this.#stopTicker();
+    this.#live.clear();
+    this.#live.showCursor();
+    this.#removeLogCapture();
+    if (this.#input.isTTY) this.#input.setRawMode?.(false);
+    try {
+      return await task();
+    } finally {
+      if (this.#input.isTTY) {
+        this.#input.setRawMode?.(true);
+        // Registry installers may pause stdin after reading from inherited
+        // stdio. Resume it explicitly so the next TUI prompt keeps the event
+        // loop alive and can receive input.
+        this.#input.resume();
+      }
+      this.#live.hideCursor();
+      this.#installLogCapture();
+      if (this.#setupFlow !== undefined) {
+        this.#startTicker();
+        this.#armFlowIdleTrap();
+      }
+      this.#live.reset();
+      this.#paint();
+    }
   }
 
   /** Last server session id the runner reported; named in the parting line. */

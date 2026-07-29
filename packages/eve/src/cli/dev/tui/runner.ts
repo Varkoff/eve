@@ -255,7 +255,7 @@ export type AgentTUIRenderer = {
   clearSetupWarning?(): void;
   /** Commits the startup `/vc:login` invocation to the transcript. */
   renderCommandInvocation?(text: string, status?: "failed"): void;
-  renderCommandResult?(text: string): void;
+  renderCommandResult?(text: string, tone?: "success"): void;
   readonly setupFlow?: SetupFlowRenderer;
   readPrompt?(options?: AgentTUISessionOptions): Promise<string | undefined>;
   /**
@@ -370,6 +370,8 @@ export interface PromptCommandHandlerContext {
 export interface PromptCommandOutcome {
   /** Outcome line rendered under the echoed command; absent renders nothing. */
   message?: string;
+  /** Promotes a successful outcome to a top-level green check. */
+  tone?: "success";
   /** Post-command work after setup settles. */
   effect?: VercelStatusEffect | { kind: "connection-added" } | { kind: "model-access-changed" };
 }
@@ -1297,10 +1299,10 @@ export class EveTUIRunner {
     });
   }
 
-  #renderCommandOutcome(text: string | undefined): void {
+  #renderCommandOutcome(text: string | undefined, tone?: "success"): void {
     if (text === undefined) return;
     if (this.#renderer.renderCommandResult !== undefined) {
-      this.#renderer.renderCommandResult(text);
+      this.#renderer.renderCommandResult(text, tone);
       return;
     }
     this.#renderer.renderNotice?.(text);
@@ -1388,7 +1390,7 @@ export class EveTUIRunner {
       title,
     });
     this.#renderStartupCommandInvocation(command, input.trigger);
-    this.#renderCommandOutcome(outcome?.message);
+    this.#renderCommandOutcome(outcome?.message, outcome?.tone);
     await this.#applyCommandEffect(outcome?.effect);
     this.#refreshHeaderFromRemoteConnection();
   }
@@ -1398,7 +1400,8 @@ export class EveTUIRunner {
    * model access depends on the Vercel CLI and a Vercel session, so resolve
    * only those missing prerequisites before entering the model picker. A probe
    * failure still opens `/model`: its own-key and external-provider paths do
-   * not require Vercel.
+   * not require Vercel. After model setup, open the categorized registry hub so
+   * a new user has concrete next steps before reaching the chat prompt.
    */
   async #runInitialModelOnboarding(title: string): Promise<void> {
     const appRoot = this.#appRoot;
@@ -1442,6 +1445,9 @@ export class EveTUIRunner {
     await this.#executeExtensionCommand({ type: "extension", name: "model", argument: "" }, title, {
       trigger: "startup",
       initialModelStep: "provider",
+    });
+    await this.#executeExtensionCommand({ type: "extension", name: "add", argument: "" }, title, {
+      trigger: "startup",
     });
   }
 

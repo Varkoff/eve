@@ -132,7 +132,15 @@
           "type": "registry:file",
           "target": "agent/connections/vercel.ts"
         }
-      ]
+      ],
+      "meta": {
+        "eve": {
+          "setup": {
+            "command": "eve",
+            "args": ["integration", "connect", "vercel", "mcp.vercel.com"]
+          }
+        }
+      }
     },
     {
       "name": "connection/linear",
@@ -146,7 +154,15 @@
           "type": "registry:file",
           "target": "agent/connections/linear.ts"
         }
-      ]
+      ],
+      "meta": {
+        "eve": {
+          "setup": {
+            "command": "eve",
+            "args": ["integration", "connect", "linear", "mcp.linear.app"]
+          }
+        }
+      }
     },
     {
       "name": "connection/notion",
@@ -160,7 +176,15 @@
           "type": "registry:file",
           "target": "agent/connections/notion.ts"
         }
-      ]
+      ],
+      "meta": {
+        "eve": {
+          "setup": {
+            "command": "eve",
+            "args": ["integration", "connect", "notion", "mcp.notion.com"]
+          }
+        }
+      }
     },
     {
       "name": "connection/datadog",
@@ -174,7 +198,15 @@
           "type": "registry:file",
           "target": "agent/connections/datadog.ts"
         }
-      ]
+      ],
+      "meta": {
+        "eve": {
+          "setup": {
+            "command": "eve",
+            "args": ["integration", "connect", "datadog", "mcp.datadoghq.com"]
+          }
+        }
+      }
     },
     {
       "name": "connection/honeycomb",
@@ -188,7 +220,15 @@
           "type": "registry:file",
           "target": "agent/connections/honeycomb.ts"
         }
-      ]
+      ],
+      "meta": {
+        "eve": {
+          "setup": {
+            "command": "eve",
+            "args": ["integration", "connect", "honeycomb", "mcp.honeycomb.io"]
+          }
+        }
+      }
     },
     {
       "name": "connection/airtable",
@@ -202,7 +242,15 @@
           "type": "registry:file",
           "target": "agent/connections/airtable.ts"
         }
-      ]
+      ],
+      "meta": {
+        "eve": {
+          "setup": {
+            "command": "eve",
+            "args": ["integration", "connect", "airtable", "mcp.airtable.com"]
+          }
+        }
+      }
     },
     {
       "name": "connection/bitly",
@@ -216,7 +264,15 @@
           "type": "registry:file",
           "target": "agent/connections/bitly.ts"
         }
-      ]
+      ],
+      "meta": {
+        "eve": {
+          "setup": {
+            "command": "eve",
+            "args": ["integration", "connect", "bitly", "api-ssl.bitly.com"]
+          }
+        }
+      }
     },
     {
       "name": "connection/brex",
@@ -230,7 +286,15 @@
           "type": "registry:file",
           "target": "agent/connections/brex.ts"
         }
-      ]
+      ],
+      "meta": {
+        "eve": {
+          "setup": {
+            "command": "eve",
+            "args": ["integration", "connect", "brex", "api.brex.com"]
+          }
+        }
+      }
     },
     {
       "name": "connection/candid",
@@ -244,7 +308,15 @@
           "type": "registry:file",
           "target": "agent/connections/candid.ts"
         }
-      ]
+      ],
+      "meta": {
+        "eve": {
+          "setup": {
+            "command": "eve",
+            "args": ["integration", "connect", "candid", "mcp.candid.org"]
+          }
+        }
+      }
     },
     {
       "name": "connection/clickhouse",
@@ -258,7 +330,15 @@
           "type": "registry:file",
           "target": "agent/connections/clickhouse.ts"
         }
-      ]
+      ],
+      "meta": {
+        "eve": {
+          "setup": {
+            "command": "eve",
+            "args": ["integration", "connect", "clickhouse", "mcp.clickhouse.cloud"]
+          }
+        }
+      }
     },
     {
       "name": "connection/cloudinary",
@@ -272,7 +352,15 @@
           "type": "registry:file",
           "target": "agent/connections/cloudinary.ts"
         }
-      ]
+      ],
+      "meta": {
+        "eve": {
+          "setup": {
+            "command": "eve",
+            "args": ["integration", "connect", "cloudinary", "asset-management.mcp.cloudinary.com"]
+          }
+        }
+      }
     },
     {
       "name": "connection/coda",
@@ -286,7 +374,15 @@
           "type": "registry:file",
           "target": "agent/connections/coda.ts"
         }
-      ]
+      ],
+      "meta": {
+        "eve": {
+          "setup": {
+            "command": "eve",
+            "args": ["integration", "connect", "coda", "coda.io"]
+          }
+        }
+      }
     },
     {
       "name": "connection/egnyte",
@@ -300,7 +396,15 @@
           "type": "registry:file",
           "target": "agent/connections/egnyte.ts"
         }
-      ]
+      ],
+      "meta": {
+        "eve": {
+          "setup": {
+            "command": "eve",
+            "args": ["integration", "connect", "egnyte", "mcp-server.egnyte.com"]
+          }
+        }
+      }
     },
     {
       "name": "connection/embat",
@@ -314,7 +418,15 @@
           "type": "registry:file",
           "target": "agent/connections/embat.ts"
         }
-      ]
+      ],
+      "meta": {
+        "eve": {
+          "setup": {
+            "command": "eve",
+            "args": ["integration", "connect", "embat", "tellme.embat.io"]
+          }
+        }
+      }
     },
     {
       "name": "connection/hugging-face",
@@ -328,7 +440,15 @@
           "type": "registry:file",
           "target": "agent/connections/hugging-face.ts"
         }
-      ]
+      ],
+      "meta": {
+        "eve": {
+          "setup": {
+            "command": "eve",
+            "args": ["integration", "connect", "hugging-face", "huggingface.co"]
+          }
+        }
+      }
     },
     {
       "name": "connection/local-falcon",
@@ -342,7 +462,15 @@
           "type": "registry:file",
           "target": "agent/connections/local-falcon.ts"
         }
-      ]
+      ],
+      "meta": {
+        "eve": {
+          "setup": {
+            "command": "eve",
+            "args": ["integration", "connect", "local-falcon", "mcp.localfalcon.com"]
+          }
+        }
+      }
     },
     {
       "name": "connection/make",
@@ -356,7 +484,15 @@
           "type": "registry:file",
           "target": "agent/connections/make.ts"
         }
-      ]
+      ],
+      "meta": {
+        "eve": {
+          "setup": {
+            "command": "eve",
+            "args": ["integration", "connect", "make", "mcp.make.com"]
+          }
+        }
+      }
     },
     {
       "name": "connection/manufact",
@@ -370,7 +506,15 @@
           "type": "registry:file",
           "target": "agent/connections/manufact.ts"
         }
-      ]
+      ],
+      "meta": {
+        "eve": {
+          "setup": {
+            "command": "eve",
+            "args": ["integration", "connect", "manufact", "mcp.manufact.com"]
+          }
+        }
+      }
     },
     {
       "name": "connection/mem0",
@@ -384,7 +528,15 @@
           "type": "registry:file",
           "target": "agent/connections/mem0.ts"
         }
-      ]
+      ],
+      "meta": {
+        "eve": {
+          "setup": {
+            "command": "eve",
+            "args": ["integration", "connect", "mem0", "mcp.mem0.ai"]
+          }
+        }
+      }
     },
     {
       "name": "connection/miro",
@@ -398,7 +550,15 @@
           "type": "registry:file",
           "target": "agent/connections/miro.ts"
         }
-      ]
+      ],
+      "meta": {
+        "eve": {
+          "setup": {
+            "command": "eve",
+            "args": ["integration", "connect", "miro", "mcp.miro.com"]
+          }
+        }
+      }
     },
     {
       "name": "connection/mixpanel",
@@ -412,7 +572,15 @@
           "type": "registry:file",
           "target": "agent/connections/mixpanel.ts"
         }
-      ]
+      ],
+      "meta": {
+        "eve": {
+          "setup": {
+            "command": "eve",
+            "args": ["integration", "connect", "mixpanel", "mcp.mixpanel.com"]
+          }
+        }
+      }
     },
     {
       "name": "connection/netlify",
@@ -426,7 +594,15 @@
           "type": "registry:file",
           "target": "agent/connections/netlify.ts"
         }
-      ]
+      ],
+      "meta": {
+        "eve": {
+          "setup": {
+            "command": "eve",
+            "args": ["integration", "connect", "netlify", "netlify-mcp.netlify.app"]
+          }
+        }
+      }
     },
     {
       "name": "connection/oreilly",
@@ -440,7 +616,15 @@
           "type": "registry:file",
           "target": "agent/connections/oreilly.ts"
         }
-      ]
+      ],
+      "meta": {
+        "eve": {
+          "setup": {
+            "command": "eve",
+            "args": ["integration", "connect", "oreilly", "api.oreilly.com"]
+          }
+        }
+      }
     },
     {
       "name": "connection/planetscale",
@@ -454,7 +638,15 @@
           "type": "registry:file",
           "target": "agent/connections/planetscale.ts"
         }
-      ]
+      ],
+      "meta": {
+        "eve": {
+          "setup": {
+            "command": "eve",
+            "args": ["integration", "connect", "planetscale", "mcp.pscale.dev"]
+          }
+        }
+      }
     },
     {
       "name": "connection/posthog",
@@ -468,7 +660,15 @@
           "type": "registry:file",
           "target": "agent/connections/posthog.ts"
         }
-      ]
+      ],
+      "meta": {
+        "eve": {
+          "setup": {
+            "command": "eve",
+            "args": ["integration", "connect", "posthog", "mcp.posthog.com"]
+          }
+        }
+      }
     },
     {
       "name": "connection/postman",
@@ -482,7 +682,15 @@
           "type": "registry:file",
           "target": "agent/connections/postman.ts"
         }
-      ]
+      ],
+      "meta": {
+        "eve": {
+          "setup": {
+            "command": "eve",
+            "args": ["integration", "connect", "postman", "mcp.postman.com"]
+          }
+        }
+      }
     },
     {
       "name": "connection/razorpay",
@@ -496,7 +704,15 @@
           "type": "registry:file",
           "target": "agent/connections/razorpay.ts"
         }
-      ]
+      ],
+      "meta": {
+        "eve": {
+          "setup": {
+            "command": "eve",
+            "args": ["integration", "connect", "razorpay", "mcp.razorpay.com"]
+          }
+        }
+      }
     },
     {
       "name": "connection/sentry",
@@ -510,7 +726,15 @@
           "type": "registry:file",
           "target": "agent/connections/sentry.ts"
         }
-      ]
+      ],
+      "meta": {
+        "eve": {
+          "setup": {
+            "command": "eve",
+            "args": ["integration", "connect", "sentry", "mcp.sentry.dev"]
+          }
+        }
+      }
     },
     {
       "name": "connection/similarweb",
@@ -524,7 +748,15 @@
           "type": "registry:file",
           "target": "agent/connections/similarweb.ts"
         }
-      ]
+      ],
+      "meta": {
+        "eve": {
+          "setup": {
+            "command": "eve",
+            "args": ["integration", "connect", "similarweb", "mcp.similarweb.com"]
+          }
+        }
+      }
     },
     {
       "name": "connection/stripe",
@@ -538,7 +770,15 @@
           "type": "registry:file",
           "target": "agent/connections/stripe.ts"
         }
-      ]
+      ],
+      "meta": {
+        "eve": {
+          "setup": {
+            "command": "eve",
+            "args": ["integration", "connect", "stripe", "mcp.stripe.com"]
+          }
+        }
+      }
     },
     {
       "name": "connection/supabase",
@@ -552,7 +792,15 @@
           "type": "registry:file",
           "target": "agent/connections/supabase.ts"
         }
-      ]
+      ],
+      "meta": {
+        "eve": {
+          "setup": {
+            "command": "eve",
+            "args": ["integration", "connect", "supabase", "mcp.supabase.com"]
+          }
+        }
+      }
     },
     {
       "name": "connection/ticket-tailor",
@@ -566,7 +814,15 @@
           "type": "registry:file",
           "target": "agent/connections/ticket-tailor.ts"
         }
-      ]
+      ],
+      "meta": {
+        "eve": {
+          "setup": {
+            "command": "eve",
+            "args": ["integration", "connect", "ticket-tailor", "mcp.tickettailor.ai"]
+          }
+        }
+      }
     },
     {
       "name": "connection/ticktick",
@@ -580,7 +836,15 @@
           "type": "registry:file",
           "target": "agent/connections/ticktick.ts"
         }
-      ]
+      ],
+      "meta": {
+        "eve": {
+          "setup": {
+            "command": "eve",
+            "args": ["integration", "connect", "ticktick", "mcp.ticktick.com"]
+          }
+        }
+      }
     },
     {
       "name": "connection/todoist",
@@ -594,7 +858,15 @@
           "type": "registry:file",
           "target": "agent/connections/todoist.ts"
         }
-      ]
+      ],
+      "meta": {
+        "eve": {
+          "setup": {
+            "command": "eve",
+            "args": ["integration", "connect", "todoist", "ai.todoist.net"]
+          }
+        }
+      }
     },
     {
       "name": "connection/webflow",
@@ -608,7 +880,15 @@
           "type": "registry:file",
           "target": "agent/connections/webflow.ts"
         }
-      ]
+      ],
+      "meta": {
+        "eve": {
+          "setup": {
+            "command": "eve",
+            "args": ["integration", "connect", "webflow", "mcp.webflow.com"]
+          }
+        }
+      }
     },
     {
       "name": "connection/wix",
@@ -622,7 +902,15 @@
           "type": "registry:file",
           "target": "agent/connections/wix.ts"
         }
-      ]
+      ],
+      "meta": {
+        "eve": {
+          "setup": {
+            "command": "eve",
+            "args": ["integration", "connect", "wix", "mcp.wix.com"]
+          }
+        }
+      }
     },
     {
       "name": "connection/zapier",
@@ -636,7 +924,15 @@
           "type": "registry:file",
           "target": "agent/connections/zapier.ts"
         }
-      ]
+      ],
+      "meta": {
+        "eve": {
+          "setup": {
+            "command": "eve",
+            "args": ["integration", "connect", "zapier", "mcp.zapier.com"]
+          }
+        }
+      }
     },
     {
       "name": "connection/zomato",
@@ -650,7 +946,15 @@
           "type": "registry:file",
           "target": "agent/connections/zomato.ts"
         }
-      ]
+      ],
+      "meta": {
+        "eve": {
+          "setup": {
+            "command": "eve",
+            "args": ["integration", "connect", "zomato", "mcp-server.zomato.com"]
+          }
+        }
+      }
     },
     {
       "name": "channel/slack",
