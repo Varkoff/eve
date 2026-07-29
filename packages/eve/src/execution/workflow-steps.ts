@@ -33,7 +33,7 @@ import {
 } from "#harness/workflow-runtime-action-state.js";
 import { getPendingWorkflowInterrupt } from "#harness/workflow-interrupt-state.js";
 import { getPendingRuntimeActionBatch } from "#harness/runtime-actions.js";
-import type { HarnessSession, StepInput, StepResult } from "#harness/types.js";
+import type { HarnessSession, SettledTurn, StepInput, StepResult } from "#harness/types.js";
 import { getTurnUsageState, toUsage } from "#harness/turn-tag-state.js";
 import type { TokenUsage } from "#shared/token-usage.js";
 import type { JsonObject } from "#shared/json.js";
@@ -117,6 +117,7 @@ export type DurableStepResult =
       readonly pendingRuntimeActionKeys?: readonly string[];
       readonly serializedContext: Record<string, unknown>;
       readonly sessionState: DurableSessionState;
+      readonly settled?: SettledTurn;
     }
   | {
       readonly action: "dispatch-workflow-runtime-actions";
@@ -465,12 +466,28 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
       };
     }
 
-    return {
-      action: "park",
-      ...derivePendingState(stepResult.session),
+    const pending = derivePendingState(stepResult.session);
+    const sessionTotals = getTurnUsageState(stepResult.session.state)?.session;
+    const settled =
+      stepResult.settledTurn !== undefined &&
+      !pending.hasPendingAuthorization &&
+      !pending.hasPendingInputBatch &&
+      (pending.pendingRuntimeActionKeys === undefined ||
+        pending.pendingRuntimeActionKeys.length === 0)
+        ? {
+            output: stepResult.settledTurn.output,
+            isError: stepResult.settledTurn.isError,
+            usage: sessionTotals === undefined ? undefined : toUsage(sessionTotals),
+          }
+        : undefined;
+
+    const park = {
+      action: "park" as const,
+      ...pending,
       serializedContext: nextSerializedContext,
       sessionState: nextState,
     };
+    return settled === undefined ? park : { ...park, settled };
   }
 
   writer.releaseLock();

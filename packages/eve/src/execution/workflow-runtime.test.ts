@@ -101,10 +101,16 @@ describe("createWorkflowRuntime#deliver", () => {
 
   it("resumes hooks with the channel request id", async () => {
     resumeHookMock.mockResolvedValue({ runId: "driver-run" });
+    const caller = {
+      callId: "call-1",
+      replyTo: { kind: "hook" as const, token: "parent-turn" },
+      subagentName: "research",
+    };
 
     await expect(
       buildRuntime().deliver({
         auth: null,
+        caller,
         continuationToken: "test:token",
         payload: { message: "hello" },
         requestId: "req_deliver",
@@ -113,6 +119,7 @@ describe("createWorkflowRuntime#deliver", () => {
 
     expect(resumeHookMock).toHaveBeenCalledWith("test:token", {
       auth: null,
+      caller,
       kind: "deliver",
       payloads: [{ message: "hello" }],
       requestId: "req_deliver",

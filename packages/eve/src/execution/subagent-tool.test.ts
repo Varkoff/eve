@@ -89,6 +89,7 @@ describe("buildSubagentRunInput", () => {
     });
     expect(runInput.continuationToken).toBe(childContinuationToken);
     expect(childContinuationToken).toMatch(/^subagent:parent-session:call-1$/);
+    expect(runInput.mode).toBe("conversation");
   });
 
   it("routes parent notifications to an active turn inbox when supplied", () => {
@@ -226,7 +227,7 @@ describe("buildSubagentRunInput", () => {
         'You are the subagent "linear".',
         "Description: Local delegate subagent description.",
         "",
-        "The caller delegated the following task to you. Complete it and return the final result directly.",
+        "The caller delegated the following task to you. Complete it and return the result directly. The caller may send follow-up messages after you answer.",
         "",
         "Caller message:",
         "Make an issue titled 'Resolve flaky test'.",
@@ -255,7 +256,7 @@ describe("buildSubagentRunInput", () => {
       [
         `You are the subagent "${action.subagentName}".`,
         "",
-        "The caller delegated the following task to you. Complete it and return the final result directly.",
+        "The caller delegated the following task to you. Complete it and return the result directly. The caller may send follow-up messages after you answer.",
         "",
         "Caller message:",
         "Make an issue titled 'Resolve flaky test'.",

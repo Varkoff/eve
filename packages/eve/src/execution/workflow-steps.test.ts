@@ -19,6 +19,7 @@ import {
   setPendingRuntimeActionBatch,
 } from "#harness/runtime-actions.js";
 import { getPendingAuthorization, setPendingAuthorization } from "#harness/authorization.js";
+import { setPendingInputBatch } from "#harness/input-requests.js";
 import type { HarnessSession, StepResult } from "#harness/types.js";
 import { createEmptyHookRegistry } from "#runtime/hooks/registry.js";
 import { getCompiledRuntimeAgentBundle } from "#runtime/sessions/compiled-agent-cache.js";
@@ -611,7 +612,7 @@ describe("dispatchRuntimeActionsStep", () => {
         .fn()
         .mockResolvedValue(
           Response.json(
-            { ok: true, sessionId: "remote-child" },
+            { continuationToken: "remote-token", ok: true, sessionId: "remote-child" },
             { headers: { "x-eve-session-id": "remote-child" }, status: 202 },
           ),
         ),
@@ -652,7 +653,9 @@ describe("dispatchRuntimeActionsStep", () => {
     expect(result.results).toEqual([]);
     expect(getPendingRuntimeActionBatch(result.sessionState.snapshot?.session.state)).toMatchObject(
       {
+        childContinuationTokens: { "call-remote": "remote-token" },
         childSessionIds: { "call-remote": "remote-child" },
+        childUrls: { "call-remote": "https://remote.example.com" },
       },
     );
   });
@@ -745,6 +748,116 @@ describe("dispatchRuntimeActionsStep", () => {
 });
 
 describe("turnStep", () => {
+  it("carries a settled turn through the typed park action when no work remains pending", async () => {
+    const session = createStubSession();
+    installSessionStoreMocks([session]);
+    vi.mocked(createExecutionNodeStep).mockImplementation(() => {
+      return async (stepSession): Promise<StepResult> => ({
+        next: null,
+        session: stepSession,
+        settledTurn: { output: "settled answer" },
+      });
+    });
+
+    const result = await turnStep({
+      input: {
+        kind: "deliver",
+        payloads: [{ message: "hello" }],
+      },
+      parentWritable: createTestWritable(),
+      serializedContext: createSerializedContext(),
+      sessionState: createStubSessionState(),
+    });
+
+    expect(result).toMatchObject({
+      action: "park",
+      settled: { output: "settled answer" },
+    });
+  });
+
+  it.each([
+    {
+      name: "authorization",
+      withPending: (session: HarnessSession): HarnessSession => ({
+        ...session,
+        state: setPendingAuthorization(session.state, {
+          challenges: [
+            {
+              challenge: {
+                instructions: "Sign in to continue",
+                url: "https://idp.example/authorize",
+              },
+              hookUrl: "https://app.example/callback",
+              name: "statuspage",
+            },
+          ],
+        }),
+      }),
+    },
+    {
+      name: "input batch",
+      withPending: (session: HarnessSession): HarnessSession =>
+        setPendingInputBatch({
+          requests: [
+            {
+              action: {
+                callId: "call-input",
+                input: {},
+                kind: "tool-call",
+                toolName: "confirm",
+              },
+              prompt: "Continue?",
+              requestId: "request-input",
+            },
+          ],
+          responseMessages: [],
+          session,
+        }),
+    },
+    {
+      name: "runtime action",
+      withPending: (session: HarnessSession): HarnessSession =>
+        setPendingRuntimeActionBatch({
+          actions: [
+            {
+              callId: "call-runtime",
+              input: {},
+              kind: "tool-call",
+              toolName: "runtime-tool",
+            },
+          ],
+          event: { sequence: 0, stepIndex: 0, turnId: "turn_0" },
+          responseMessages: [],
+          session,
+        }),
+    },
+  ])("does not attach settled output while a $name remains pending", async ({ withPending }) => {
+    const session = createStubSession();
+    installSessionStoreMocks([session]);
+    vi.mocked(createExecutionNodeStep).mockImplementation(() => {
+      return async (stepSession): Promise<StepResult> => ({
+        next: null,
+        session: withPending(stepSession),
+        settledTurn: { output: "must stay gated" },
+      });
+    });
+
+    const result = await turnStep({
+      input: {
+        kind: "deliver",
+        payloads: [{ message: "hello" }],
+      },
+      parentWritable: createTestWritable(),
+      serializedContext: createSerializedContext(),
+      sessionState: createStubSessionState(),
+    });
+
+    expect(result.action).toBe("park");
+    if (result.action === "park") {
+      expect(result.settled).toBeUndefined();
+    }
+  });
+
   it("reads the durable session from normalized turn-step input", async () => {
     const session = createStubSession({
       continuationToken: "http:turn-step",

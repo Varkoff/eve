@@ -6,12 +6,17 @@ import type {
   HookPayload,
   RunInput,
   SessionCapabilities,
+  TurnCaller,
 } from "#channel/types.js";
 import { coalesceDeliveries } from "#harness/messages.js";
 import { readChannelRequestId, readRootSessionId } from "#execution/eve-workflow-attributes.js";
 import type { RunMode } from "#shared/run-mode.js";
 import type { DurableCompiledArtifactsSource } from "#runtime/durable-compiled-artifacts-source.js";
-import { notifyDelegatedParentStep } from "#execution/delegated-parent-notification.js";
+import {
+  notifyDelegatedParentStep,
+  notifyTurnCallerStep,
+  resolveInitialTurnCallerStep,
+} from "#execution/delegated-parent-notification.js";
 import {
   createDelegatedSubagentErrorResult,
   createDelegatedSubagentSuccessResult,
@@ -30,7 +35,9 @@ import {
   createSessionDeliveryHook,
   type SessionDeliveryHook,
 } from "#execution/session-delivery-hook.js";
+import { terminateChildSessionsStep } from "#execution/terminate-child-sessions-step.js";
 import { readSerializedSubagentDepth } from "#harness/subagent-depth.js";
+import type { TokenUsage } from "#shared/token-usage.js";
 
 const SAFE_OUTER_WORKFLOW_FAILURE_MESSAGE =
   "Agent workflow failed. Inspect the private session trace for details.";
@@ -52,6 +59,11 @@ export interface WorkflowEntryInput {
 
 export interface WorkflowEntryResult {
   readonly output: unknown;
+}
+
+interface WorkflowLifecycleState {
+  caller: TurnCaller | undefined;
+  sessionState: DurableSessionState | undefined;
 }
 
 /**
@@ -87,6 +99,10 @@ export async function workflowEntry(input: WorkflowEntryInput): Promise<Workflow
   input.serializedContext["eve.sessionId"] = sessionId;
 
   const driverWritable = getWritable<Uint8Array>();
+  const lifecycleState: WorkflowLifecycleState = {
+    caller: undefined,
+    sessionState: undefined,
+  };
 
   try {
     // Derived once and reused for createSession + tag emission so the
@@ -104,6 +120,12 @@ export async function workflowEntry(input: WorkflowEntryInput): Promise<Workflow
       sessionId,
       subagentDepth,
     });
+    lifecycleState.sessionState = sessionState;
+    if (mode === "conversation") {
+      lifecycleState.caller = await resolveInitialTurnCallerStep({
+        serializedContext: input.serializedContext,
+      });
+    }
 
     return await runDriverLoop({
       capabilities,
@@ -119,6 +141,7 @@ export async function workflowEntry(input: WorkflowEntryInput): Promise<Workflow
         ],
         requestId: readChannelRequestId(input.serializedContext),
       },
+      lifecycleState,
       mode,
       serializedContext: input.serializedContext,
       sessionState,
@@ -128,20 +151,33 @@ export async function workflowEntry(input: WorkflowEntryInput): Promise<Workflow
     // surface as `session.failed` (deserialization, runtime-action
     // throws, adapter `deliver` throws, staging errors, etc.) so the
     // channel still sees a terminal event.
+    if (lifecycleState.sessionState !== undefined) {
+      await terminateChildSessionsStep({
+        sessionState: lifecycleState.sessionState,
+      });
+    }
     await emitTerminalSessionFailureStep({
       error: normalizeSerializableError(error),
       parentWritable: driverWritable,
       serializedContext: input.serializedContext,
     });
-    await fireSessionCallbackStep({
-      error: normalizeSerializableError(error),
-      serializedContext: input.serializedContext,
-      status: "failed",
-    });
-    await notifyDelegatedParentStep({
-      result: createDelegatedSubagentErrorResult(input.serializedContext, error),
-      serializedContext: input.serializedContext,
-    });
+    if (mode === "task") {
+      await fireSessionCallbackStep({
+        error: normalizeSerializableError(error),
+        serializedContext: input.serializedContext,
+        status: "failed",
+      });
+      await notifyDelegatedParentStep({
+        result: createDelegatedSubagentErrorResult(input.serializedContext, error),
+        serializedContext: input.serializedContext,
+      });
+    } else {
+      await notifyTurnCallerStep({
+        caller: lifecycleState.caller,
+        serializedContext: input.serializedContext,
+        settled: { isError: true, output: error },
+      });
+    }
     throw createSafeOuterWorkflowError();
   }
 }
@@ -156,6 +192,7 @@ async function runDriverLoop(input: {
   readonly capabilities?: SessionCapabilities;
   readonly driverWritable: WritableStream<Uint8Array>;
   readonly initialInput: HookPayload;
+  readonly lifecycleState: WorkflowLifecycleState;
   readonly mode: RunMode;
   readonly serializedContext: Record<string, unknown>;
   readonly sessionState: DurableSessionState;
@@ -210,12 +247,14 @@ async function runDriverLoop(input: {
       serializedContext: input.serializedContext,
       sessionState: input.sessionState,
     });
+    input.lifecycleState.sessionState = action.sessionState;
 
     while (true) {
       if (action.kind === "done") {
         return await finalizeDone({
           action,
-          driverWritable: input.driverWritable,
+          caller: input.lifecycleState.caller,
+          mode: input.mode,
         });
       }
 
@@ -237,6 +276,7 @@ async function runDriverLoop(input: {
           serializedContext: settled.serializedContext,
           sessionState: settled.sessionState,
         };
+        input.lifecycleState.sessionState = action.sessionState;
       }
 
       if (!action.sessionState.continuationToken) {
@@ -272,40 +312,62 @@ async function runDriverLoop(input: {
           serializedContext: action.serializedContext,
           sessionState: action.sessionState,
         });
+        input.lifecycleState.sessionState = action.sessionState;
         continue;
       }
 
-      const nextDeliver = await waitForNextDeliver({
-        bufferedDeliveries,
-        deliveryHook,
-      });
-
-      if (nextDeliver === null) {
-        return { output: "" };
+      // `settled` rides the typed park arm exclusively; `run-step` preserves
+      // the full StepResult so no state-key fallback exists anymore.
+      const settled = action.settled;
+      if (action.cancelled !== true && settled !== undefined) {
+        await notifyTurnCallerStep({
+          caller: input.lifecycleState.caller,
+          serializedContext: action.serializedContext,
+          settled,
+        });
+        input.lifecycleState.caller = undefined;
+      } else if (action.cancelled === true) {
+        input.lifecycleState.caller = undefined;
       }
 
-      const remainder = await routeDeliverToChildren({
-        auth: nextDeliver.auth,
-        parentWritable: input.driverWritable,
-        payloads: nextDeliver.payloads,
-        sessionState: action.sessionState,
-      });
+      while (true) {
+        const nextDeliver = await waitForNextDeliver({
+          bufferedDeliveries,
+          deliveryHook,
+        });
 
-      if (remainder === undefined) {
-        // Fully routed to a descendant; parent has no turn to run.
-        continue;
-      }
+        if (nextDeliver === null) {
+          return { output: "" };
+        }
 
-      action = await runTurn({
-        delivery: {
+        const remainder = await routeDeliverToChildren({
           auth: nextDeliver.auth,
-          kind: "deliver",
-          payloads: [remainder],
-          requestId: nextDeliver.requestId,
-        },
-        serializedContext: action.serializedContext,
-        sessionState: action.sessionState,
-      });
+          parentWritable: input.driverWritable,
+          payloads: nextDeliver.payloads,
+          sessionState: action.sessionState,
+        });
+
+        if (remainder === undefined) {
+          // Fully routed to a descendant; parent has no turn to run.
+          continue;
+        }
+
+        if (nextDeliver.caller !== undefined) {
+          input.lifecycleState.caller = nextDeliver.caller;
+        }
+        action = await runTurn({
+          delivery: {
+            auth: nextDeliver.auth,
+            kind: "deliver",
+            payloads: [remainder],
+            requestId: nextDeliver.requestId,
+          },
+          serializedContext: action.serializedContext,
+          sessionState: action.sessionState,
+        });
+        input.lifecycleState.sessionState = action.sessionState;
+        break;
+      }
     }
   } finally {
     await disposeSettledTurnControl?.();
@@ -319,25 +381,47 @@ async function runDriverLoop(input: {
 
 async function finalizeDone(input: {
   readonly action: NextDriverAction & { readonly kind: "done" };
-  readonly driverWritable: WritableStream<Uint8Array>;
+  readonly caller: TurnCaller | undefined;
+  readonly mode: RunMode;
 }): Promise<WorkflowEntryResult> {
   const { output, serializedContext } = input.action;
   const failed = input.action.isError === true;
 
-  await fireSessionCallbackStep({
-    error: failed ? output : undefined,
-    output: failed ? undefined : output,
-    serializedContext,
-    status: failed ? "failed" : "completed",
-    usage: failed ? undefined : input.action.usage,
+  await terminateChildSessionsStep({
+    sessionState: input.action.sessionState,
   });
-  await notifyDelegatedParentStep({
-    result: failed
-      ? createDelegatedSubagentErrorResult(serializedContext, output)
-      : createDelegatedSubagentSuccessResult(serializedContext, output),
-    serializedContext,
-    usage: failed ? undefined : input.action.usage,
-  });
+  if (input.mode === "task") {
+    await fireSessionCallbackStep({
+      error: failed ? output : undefined,
+      output: failed ? undefined : output,
+      serializedContext,
+      status: failed ? "failed" : "completed",
+      usage: failed ? undefined : input.action.usage,
+    });
+    await notifyDelegatedParentStep({
+      result: failed
+        ? createDelegatedSubagentErrorResult(serializedContext, output)
+        : createDelegatedSubagentSuccessResult(serializedContext, output),
+      serializedContext,
+      usage: failed ? undefined : input.action.usage,
+    });
+  } else {
+    const settled: {
+      isError?: boolean;
+      output: unknown;
+      usage?: TokenUsage;
+    } = { output };
+    if (failed) {
+      settled.isError = true;
+    } else if (input.action.usage !== undefined) {
+      settled.usage = input.action.usage;
+    }
+    await notifyTurnCallerStep({
+      caller: input.caller,
+      serializedContext,
+      settled,
+    });
+  }
   return { output };
 }
 
@@ -346,7 +430,7 @@ async function waitForNextDeliver(input: {
   readonly deliveryHook: SessionDeliveryHook;
 }): Promise<DeliverHookPayload | null> {
   if (input.bufferedDeliveries.length > 0) {
-    return coalesceDeliveries(input.bufferedDeliveries.splice(0));
+    return takeBufferedTurnDelivery(input.bufferedDeliveries);
   }
 
   while (true) {
@@ -370,11 +454,21 @@ async function waitForNextDeliver(input: {
         break;
       }
 
-      input.deliveryHook.consumeNext();
-
       if (ready.done) {
+        input.deliveryHook.consumeNext();
         break;
       }
+
+      if (
+        ready.value.kind === "deliver" &&
+        coalesced.caller !== undefined &&
+        ready.value.caller !== undefined
+      ) {
+        // Leave the offered delivery unconsumed for the next turn.
+        break;
+      }
+
+      input.deliveryHook.consumeNext();
 
       if (ready.value.kind !== "deliver") {
         continue;
@@ -385,6 +479,31 @@ async function waitForNextDeliver(input: {
 
     return coalesced;
   }
+}
+
+function takeBufferedTurnDelivery(bufferedDeliveries: DeliverHookPayload[]): DeliverHookPayload {
+  const first = bufferedDeliveries.shift();
+  if (first === undefined) {
+    throw new Error("Cannot take a turn delivery from an empty buffer.");
+  }
+
+  const turnDeliveries = [first];
+  let caller = first.caller;
+  while (bufferedDeliveries.length > 0) {
+    const next = bufferedDeliveries[0];
+    if (next === undefined || (caller !== undefined && next.caller !== undefined)) {
+      break;
+    }
+
+    const delivery = bufferedDeliveries.shift();
+    if (delivery === undefined) {
+      throw new Error("Buffered turn delivery disappeared while partitioning.");
+    }
+    turnDeliveries.push(delivery);
+    caller ??= delivery.caller;
+  }
+
+  return coalesceDeliveries(turnDeliveries);
 }
 
 const NO_READY_MESSAGE = Symbol("no-ready-message");

@@ -183,6 +183,7 @@ import type {
   CompactionConfig,
   HarnessSession,
   HarnessToolMap,
+  SettledTurn,
   StepFn,
   StepInput,
   StepResult,
@@ -1182,15 +1183,11 @@ export function createToolLoopHarness(config: ToolLoopHarnessConfig): StepFn {
             message: errorMessage,
             sessionId: session.sessionId,
           });
-          // In task mode (delegated subagent runs) the terminal failure
-          // must be the task's error result so the parent driver resumes
-          // with a failed `subagent-result` instead of a successful empty
-          // output (https://github.com/vercel/eve/issues/412).
+          // The terminal failure remains actionable in every mode. Delegated
+          // runs forward this output to the parent as a failed result
+          // (https://github.com/vercel/eve/issues/412).
           return {
-            next:
-              config.mode === "task"
-                ? { done: true, isError: true, output: taskFailureOutput }
-                : { done: true, output: "" },
+            next: { done: true, isError: true, output: taskFailureOutput },
             session,
           };
         }
@@ -1242,8 +1239,12 @@ export function createToolLoopHarness(config: ToolLoopHarnessConfig): StepFn {
           details,
           message: errorMessage,
         });
-        const parkedSession = setHarnessEmissionState(session, emissionState);
-        return { next: null, session: parkedSession };
+        const settledTurn = { isError: true, output: taskFailureOutput } satisfies SettledTurn;
+        return {
+          next: null,
+          session: setHarnessEmissionState(session, emissionState),
+          settledTurn,
+        };
       }
     }
 
@@ -2049,6 +2050,7 @@ async function handleStepResult(input: {
     result,
     schema: nextSession.outputSchema,
     session: nextSession,
+    stepOutput,
   });
 }
 
@@ -2173,8 +2175,9 @@ async function finishConversationTurn(input: {
   readonly result: HarnessStepResult;
   readonly schema: JsonObject | undefined;
   readonly session: HarnessSession;
+  readonly stepOutput: string | null;
 }): Promise<StepResult> {
-  const { emit, history, result, schema } = input;
+  const { emit, history, result, schema, stepOutput } = input;
   let { emissionState, session } = input;
 
   if (schema === undefined) {
@@ -2187,7 +2190,8 @@ async function finishConversationTurn(input: {
       );
       session = setHarnessEmissionState(session, emissionState);
     }
-    return { next: null, session };
+    const settledTurn = { output: stepOutput ?? "" } satisfies SettledTurn;
+    return { next: null, session, settledTurn };
   }
 
   const structured = extractFinalOutput(result);
@@ -2199,7 +2203,11 @@ async function finishConversationTurn(input: {
       });
       session = setHarnessEmissionState(session, emissionState);
     }
-    return { next: null, session };
+    const settledTurn = {
+      isError: true,
+      output: OUTPUT_SCHEMA_NOT_FULFILLED.message,
+    } satisfies SettledTurn;
+    return { next: null, session, settledTurn };
   }
 
   session = persistStructuredAssistantTurn(session, history, structured);
@@ -2213,7 +2221,8 @@ async function finishConversationTurn(input: {
     );
     session = setHarnessEmissionState(session, emissionState);
   }
-  return { next: null, session };
+  const settledTurn = { output: structured } satisfies SettledTurn;
+  return { next: null, session, settledTurn };
 }
 
 /** Replays a parked dynamic workflow with completed child-agent results. */

@@ -4,8 +4,8 @@ import { SessionCallbackKey } from "#context/keys.js";
 import { createLogger } from "#internal/logging.js";
 import { toErrorMessage } from "#shared/errors.js";
 import type { TokenUsage } from "#shared/token-usage.js";
+import { postSessionCallbackRequest } from "#execution/session-callback-request.js";
 
-const SESSION_CALLBACK_TIMEOUT_MS = 30_000;
 const log = createLogger("execution.session-callback");
 
 /**
@@ -58,17 +58,9 @@ export async function fireSessionCallbackStep(input: {
             subagentName: callback.subagentName,
           };
 
-    const response = await fetch(callback.url, {
-      body: JSON.stringify(body),
-      headers: {
-        "content-type": "application/json",
-      },
-      method: "POST",
-      // Do not follow redirects: a validated callback host could otherwise
-      // 3xx-bounce the framework to an internal/metadata address after the
-      // path/token check has already passed.
-      redirect: "error",
-      signal: AbortSignal.timeout(SESSION_CALLBACK_TIMEOUT_MS),
+    const response = await postSessionCallbackRequest({
+      body,
+      url: callback.url,
     });
 
     if (!response.ok) {

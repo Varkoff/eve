@@ -126,7 +126,7 @@ export function buildSubagentRunInput(input: {
       outputSchema: requestedOutputSchema,
     },
     limits: inheritedLimits,
-    mode: "task",
+    mode: "conversation",
     parent: {
       callId: action.callId,
       rootSessionId,
