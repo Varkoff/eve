@@ -6,6 +6,9 @@ import { createSession, type Session } from "#channel/session.js";
 import type { SendFn, SendOptions, SendPayload } from "#channel/routes.js";
 import { isRuntimeNoActiveSessionError } from "#execution/runtime-errors.js";
 import { serializeUrlFilePart } from "#internal/attachments/url-refs.js";
+import { createLogger } from "#internal/logging.js";
+
+const log = createLogger("channel.send");
 
 export function createSendFn<TState = undefined>(
   runtime: Runtime,
@@ -20,6 +23,10 @@ export function createSendFn<TState = undefined>(
     const auth = (options as { auth: SessionAuthContext | null }).auth;
     const initiatorAuth = (options as { initiatorAuth?: SessionAuthContext | null }).initiatorAuth;
     const callback = (options as { callback?: SendOptions<TState>["callback"] }).callback;
+    const capabilities = (options as { capabilities?: SendOptions<TState>["capabilities"] })
+      .capabilities;
+    const intent =
+      (options as { intent?: SendOptions<TState>["intent"] }).intent ?? "resume-or-start";
     const mode = (options as { mode?: SendOptions<TState>["mode"] }).mode ?? "conversation";
     const state = (options as { state?: TState }).state;
     const title = (options as { title?: string }).title;
@@ -30,6 +37,7 @@ export function createSendFn<TState = undefined>(
       message: rawMessage,
       inputResponses,
       context,
+      caller,
       outputSchema,
     } = normalizeSendInput(input);
     const message = serializeUrlFilePartsInMessage(rawMessage);
@@ -37,6 +45,7 @@ export function createSendFn<TState = undefined>(
     try {
       const deliverInput: DeliverInput = {
         auth,
+        caller,
         continuationToken,
         requestId: metadata.requestId,
         payload: { inputResponses, message, context, outputSchema },
@@ -46,6 +55,12 @@ export function createSendFn<TState = undefined>(
       return createSession(sessionId, rawToken, runtime);
     } catch (error) {
       if (!isRuntimeNoActiveSessionError(error)) {
+        throw error;
+      }
+      if (intent === "resume") {
+        log.warn("session resume requested but no active session exists", {
+          continuationToken,
+        });
         throw error;
       }
     }
@@ -65,7 +80,7 @@ export function createSendFn<TState = undefined>(
     } = {
       adapter: sessionAdapter,
       auth,
-      capabilities: mode === "conversation" ? { requestInput: true } : undefined,
+      capabilities: capabilities ?? (mode === "conversation" ? { requestInput: true } : undefined),
       channelName,
       callback,
       continuationToken,

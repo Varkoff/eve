@@ -10,11 +10,11 @@ export const HTTP_SESSION_CALLBACK_CHANNEL_NAME_PREFIX = "eve/v1/callback";
 
 const HANDLED_METHODS: readonly ChannelMethod[] = ["POST"];
 
-type SessionTerminalCallbackPayload =
+type SessionCallbackPayload =
   | {
       readonly callId: string;
-      readonly kind: "session.completed";
-      readonly output: string;
+      readonly kind: "session.completed" | "turn.completed";
+      readonly output: JsonValue;
       readonly sessionId: string;
       readonly subagentName: string;
       readonly usage?: TokenUsage;
@@ -23,6 +23,13 @@ type SessionTerminalCallbackPayload =
       readonly callId: string;
       readonly error: JsonValue;
       readonly kind: "session.failed";
+      readonly sessionId: string;
+      readonly subagentName: string;
+    }
+  | {
+      readonly callId: string;
+      readonly error: JsonValue;
+      readonly kind: "turn.failed";
       readonly sessionId: string;
       readonly subagentName: string;
     };
@@ -92,15 +99,18 @@ function projectSessionCallbackResult(
     return Response.json({ error: "Expected a JSON object.", ok: false }, { status: 400 });
   }
 
-  const payload = value as Partial<SessionTerminalCallbackPayload>;
+  const payload = value as Partial<SessionCallbackPayload>;
   if (typeof payload.callId !== "string" || payload.callId.length === 0) {
     return Response.json({ error: "Missing callback callId.", ok: false }, { status: 400 });
   }
   if (typeof payload.subagentName !== "string" || payload.subagentName.length === 0) {
     return Response.json({ error: "Missing callback subagentName.", ok: false }, { status: 400 });
   }
+  if (typeof payload.sessionId !== "string" || payload.sessionId.length === 0) {
+    return Response.json({ error: "Missing callback sessionId.", ok: false }, { status: 400 });
+  }
 
-  if (payload.kind === "session.completed") {
+  if (payload.kind === "session.completed" || payload.kind === "turn.completed") {
     const base: RuntimeSubagentResultActionResult = {
       callId: payload.callId,
       kind: "subagent-result",
@@ -123,6 +133,19 @@ function projectSessionCallbackResult(
               message: "Remote agent failed.",
             }
           : payload.error,
+      subagentName: payload.subagentName,
+    };
+  }
+
+  if (payload.kind === "turn.failed") {
+    if (payload.error === undefined) {
+      return Response.json({ error: "Missing callback error.", ok: false }, { status: 400 });
+    }
+    return {
+      callId: payload.callId,
+      isError: true,
+      kind: "subagent-result",
+      output: payload.error,
       subagentName: payload.subagentName,
     };
   }

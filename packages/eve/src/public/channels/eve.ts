@@ -1,11 +1,17 @@
 import { type FilePart, type TextPart, type UserContent } from "ai";
 
-import type { CancelTurnResult, SessionAuthContext, SessionCallback } from "#channel/types.js";
+import type {
+  CancelTurnResult,
+  SessionAuthContext,
+  SessionCallback,
+  SessionCapabilities,
+} from "#channel/types.js";
 import type { CancelTurnResponse } from "#protocol/cancel-turn.js";
 import type { ResetResponse } from "#protocol/reset-session.js";
 import type { SendOptions } from "#channel/routes.js";
 import { resolveForwardedPrincipal, type TrustedForwarders } from "#channel/forwarded-principal.js";
 import { parseSessionCallback } from "#channel/session-callback.js";
+import { isRuntimeNoActiveSessionError } from "#execution/runtime-errors.js";
 import { hasInternalRefScheme } from "#internal/attachments/url-refs.js";
 import { createLogger, logError } from "#internal/logging.js";
 import {
@@ -256,6 +262,7 @@ export function eveChannel(input: EveChannelInput): EveChannel {
         const sendOptions: SendOptions = {
           auth: messageResult.auth,
           callback: body.callback,
+          capabilities: body.capabilities,
           continuationToken: token,
           mode: body.mode,
         };
@@ -359,18 +366,42 @@ export function eveChannel(input: EveChannelInput): EveChannel {
           dispatchAuth = messageResult.auth;
         }
 
-        const session = await send(
-          {
-            inputResponses: body.inputResponses,
-            message: body.message,
-            context,
-            outputSchema: body.outputSchema,
-          },
-          {
-            auth: dispatchAuth,
-            continuationToken: body.continuationToken,
-          },
-        );
+        let session;
+        try {
+          session = await send(
+            {
+              caller:
+                body.callback === undefined
+                  ? undefined
+                  : {
+                      callId: body.callback.callId,
+                      replyTo: { kind: "callback", url: body.callback.url },
+                      subagentName: body.callback.subagentName,
+                    },
+              inputResponses: body.inputResponses,
+              message: body.message,
+              context,
+              outputSchema: body.outputSchema,
+            },
+            {
+              auth: dispatchAuth,
+              continuationToken: body.continuationToken,
+              intent: "resume",
+            },
+          );
+        } catch (error) {
+          if (!isRuntimeNoActiveSessionError(error)) {
+            throw error;
+          }
+          return Response.json(
+            {
+              code: "SESSION_NOT_RESUMABLE",
+              error: "Session is not active and cannot be resumed.",
+              ok: false,
+            },
+            { status: 404 },
+          );
+        }
 
         return Response.json(
           {
@@ -590,6 +621,7 @@ function droppedMessageResponse(): Response {
 
 interface ParsedCreateBody {
   callback?: SessionCallback;
+  capabilities?: SessionCapabilities;
   message: string | UserContent;
   mode?: RunMode;
   context?: readonly string[];
@@ -606,6 +638,9 @@ function parseCreateBody(payload: Record<string, unknown>): ParsedCreateBody | R
   const callback = parseCallbackField(payload.callback);
   if (callback instanceof Response) return callback;
 
+  const capabilities = parseCapabilitiesField(payload.capabilities);
+  if (capabilities instanceof Response) return capabilities;
+
   const mode = parseModeField(payload.mode);
   if (mode instanceof Response) return mode;
 
@@ -619,10 +654,11 @@ function parseCreateBody(payload: Record<string, unknown>): ParsedCreateBody | R
     );
   }
 
-  return { callback, message, mode, context, outputSchema };
+  return { callback, capabilities, message, mode, context, outputSchema };
 }
 
 interface ParsedContinueBody {
+  callback?: SessionCallback;
   message?: string | UserContent;
   continuationToken: string;
   inputResponses?: readonly InputResponse[];
@@ -655,6 +691,9 @@ function parseContinueBody(payload: Record<string, unknown>): ParsedContinueBody
   const message = parseMessageField(payload.message);
   if (message instanceof Response) return message;
 
+  const callback = parseCallbackField(payload.callback);
+  if (callback instanceof Response) return callback;
+
   const inputResponses = parseInputResponses(payload.inputResponses);
   if (inputResponses instanceof Response) return inputResponses;
 
@@ -674,7 +713,7 @@ function parseContinueBody(payload: Record<string, unknown>): ParsedContinueBody
     );
   }
 
-  return { message, continuationToken, inputResponses, context, outputSchema };
+  return { callback, message, continuationToken, inputResponses, context, outputSchema };
 }
 
 interface ParsedCancelTurnBody {
@@ -789,6 +828,30 @@ function parseCallbackField(value: unknown): SessionCallback | Response | undefi
   if (parsed.ok) return parsed.callback;
 
   return Response.json({ error: parsed.message, ok: false }, { status: 400 });
+}
+
+function parseCapabilitiesField(value: unknown): SessionCapabilities | Response | undefined {
+  if (value === undefined) return undefined;
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return Response.json(
+      { error: "Expected 'capabilities' to be an object.", ok: false },
+      { status: 400 },
+    );
+  }
+
+  const keys = Object.keys(value);
+  const requestInput = Reflect.get(value, "requestInput");
+  if (
+    keys.some((key) => key !== "requestInput") ||
+    (requestInput !== undefined && typeof requestInput !== "boolean")
+  ) {
+    return Response.json(
+      { error: "Expected 'capabilities.requestInput' to be a boolean when provided.", ok: false },
+      { status: 400 },
+    );
+  }
+
+  return requestInput === undefined ? {} : { requestInput };
 }
 
 function parseModeField(value: unknown): RunMode | Response | undefined {

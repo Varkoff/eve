@@ -27,6 +27,13 @@ export interface RuntimeSubagentRegistry {
  * accept one free-form `message` string from the parent agent.
  */
 export const SUBAGENT_TOOL_INPUT_SCHEMA = z.strictObject({
+  agentId: z
+    .string()
+    .describe(
+      "Continue a previous delegation: pass the id of an agent from the <agents> list. Omit to start a new agent.",
+    )
+    .optional(),
+  description: z.string().describe("A short (3-5 word) description of the task."),
   message: z
     .string()
     .describe(

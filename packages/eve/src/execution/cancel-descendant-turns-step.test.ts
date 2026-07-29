@@ -202,7 +202,13 @@ function createPendingState(input: { readonly includeRemote?: boolean } = {}) {
   if (includeRemote) {
     session = recordPendingSubagentChild({
       callId: remoteAction.callId,
-      child: { kind: "remote", sessionId: "remote-child" },
+      child: {
+        callbackBaseUrl: "https://parent.example.com",
+        continuationToken: "remote-token",
+        kind: "remote",
+        sessionId: "remote-child",
+        url: "https://remote.example.com",
+      },
       session,
     });
   }

@@ -110,7 +110,7 @@ function formatSubagentPrompt(input: {
       `You are the subagent "${input.name}".`,
       ...input.descriptionLines,
       "",
-      "The caller delegated the following task to you. Complete it and return the final result directly.",
+      "The caller delegated the following task to you. Complete it and return the result directly. The caller may send follow-up messages after you answer.",
       "",
       "Caller message:",
       input.message,

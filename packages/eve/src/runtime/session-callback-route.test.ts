@@ -172,6 +172,75 @@ describe("session callback route", () => {
       ],
     });
   });
+
+  it("projects a completed conversation turn like a completed task session", async () => {
+    resumeHookMock.mockResolvedValue(undefined);
+
+    const response = await handleSessionCallbackRequest(
+      new Request("https://app.example.com/eve/v1/callback/tok123", {
+        body: JSON.stringify({
+          callId: "call-2",
+          kind: "turn.completed",
+          output: "next result",
+          sessionId: "remote-session",
+          subagentName: "research",
+        }),
+        method: "POST",
+      }),
+      createRouteContext({ token: "tok123" }),
+    );
+
+    expect(response.status).toBe(202);
+    expect(resumeHookMock).toHaveBeenCalledWith("tok123", {
+      kind: "runtime-action-result",
+      results: [
+        {
+          callId: "call-2",
+          kind: "subagent-result",
+          output: "next result",
+          subagentName: "research",
+        },
+      ],
+    });
+  });
+
+  it("resumes a failed conversation turn as an error result", async () => {
+    resumeHookMock.mockResolvedValue(undefined);
+
+    const response = await handleSessionCallbackRequest(
+      new Request("https://app.example.com/eve/v1/callback/tok123", {
+        body: JSON.stringify({
+          callId: "call-2",
+          error: {
+            code: "SUBAGENT_EXECUTION_FAILED",
+            message: "remote failed",
+          },
+          kind: "turn.failed",
+          sessionId: "remote-session",
+          subagentName: "research",
+        }),
+        method: "POST",
+      }),
+      createRouteContext({ token: "tok123" }),
+    );
+
+    expect(response.status).toBe(202);
+    expect(resumeHookMock).toHaveBeenCalledWith("tok123", {
+      kind: "runtime-action-result",
+      results: [
+        {
+          callId: "call-2",
+          isError: true,
+          kind: "subagent-result",
+          output: {
+            code: "SUBAGENT_EXECUTION_FAILED",
+            message: "remote failed",
+          },
+          subagentName: "research",
+        },
+      ],
+    });
+  });
 });
 
 function createRouteContext(params: Record<string, string>): RouteContext {

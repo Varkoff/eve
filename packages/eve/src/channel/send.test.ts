@@ -52,6 +52,28 @@ describe("createSendFn", () => {
     warn.mockRestore();
   });
 
+  it("rethrows a typed no-active-session error when resume intent forbids fallback", async () => {
+    const noSession = new RuntimeNoActiveSessionError("test:token");
+    const runtime = createRuntime(noSession);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const send = createSendFn(runtime, ADAPTER, "test");
+    await expect(
+      send("hello", {
+        auth: null,
+        continuationToken: "token",
+        intent: "resume",
+      }),
+    ).rejects.toBe(noSession);
+
+    expect(runtime.run).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith(
+      "[eve:channel.send] session resume requested but no active session exists",
+      { continuationToken: "test:token" },
+    );
+    warn.mockRestore();
+  });
+
   it("propagates unexpected delivery failures without starting a new session", async () => {
     const failure = new Error("boom");
     const runtime = createRuntime(failure);
@@ -110,6 +132,36 @@ describe("createSendFn", () => {
     expect(vi.mocked(runRuntime.run).mock.calls[0]![0].input).toEqual({
       message: "hello",
       context,
+    });
+  });
+
+  it("forwards the turn caller outside the channel payload", async () => {
+    const runtime: Runtime = {
+      cancelTurn: vi.fn(),
+      deliver: vi.fn().mockResolvedValue({ sessionId: "existing-session-id" }),
+      resolveSession: vi.fn(),
+      run: vi.fn().mockResolvedValue(createMockRunHandle()),
+      getEventStream: vi.fn().mockResolvedValue(new ReadableStream<HandleMessageStreamEvent>()),
+      getStreamTailIndex: vi.fn().mockResolvedValue(-1),
+      terminateSession: vi.fn(),
+    };
+    const caller = {
+      callId: "call-1",
+      replyTo: { kind: "hook" as const, token: "parent-turn" },
+      subagentName: "research",
+    };
+
+    await createSendFn(
+      runtime,
+      ADAPTER,
+      "test",
+    )({ caller, message: "follow up" }, { auth: null, continuationToken: "token" });
+
+    expect(runtime.deliver).toHaveBeenCalledWith({
+      auth: null,
+      caller,
+      continuationToken: "test:token",
+      payload: expect.not.objectContaining({ caller: expect.anything() }),
     });
   });
 

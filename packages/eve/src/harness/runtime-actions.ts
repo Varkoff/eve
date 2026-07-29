@@ -2,8 +2,21 @@ import type { ModelMessage, ToolSet, TypedToolCall } from "ai";
 
 import { createActionResultEvent, type HandleMessageStreamEvent } from "#protocol/message.js";
 import { getRuntimeActionRequestKey, getRuntimeActionResultKey } from "#runtime/actions/keys.js";
-import type { RuntimeActionRequest, RuntimeActionResult } from "#runtime/actions/types.js";
+import type {
+  RuntimeActionRequest,
+  RuntimeActionResult,
+  RuntimeSubagentResultActionResult,
+} from "#runtime/actions/types.js";
 import { parseJsonObject, type JsonObject } from "#shared/json.js";
+import {
+  deriveAgentId,
+  getAgentHandleStore,
+  removeAgentHandle,
+  renderAgentsSnippet,
+  upsertAgentHandle,
+  type AgentHandle,
+  type AgentHandleKind,
+} from "#harness/agent-handles.js";
 import { clearProxyInputRequestsForChild } from "#harness/proxy-input-requests.js";
 import {
   accumulateSessionUsage,
@@ -17,6 +30,7 @@ import type {
   SessionStateMap,
   StepInput,
 } from "#harness/types.js";
+import { ROOT_RUNTIME_AGENT_NODE_ID } from "#runtime/graph.js";
 
 const PENDING_RUNTIME_ACTION_BATCH_KEY = "eve.runtime.pendingActionBatch";
 type ToolResponsePart = Extract<ModelMessage, { role: "tool" }>["content"][number];
@@ -37,14 +51,18 @@ interface PendingRuntimeActionEventMetadata {
 /**
  * Serializable pending runtime-action batch stored on `session.state`.
  *
- * `childContinuationTokens` lets the harness clear local proxy-input entries
- * on result resolution. `childSessionIds` lets the turn workflow cancel every
- * successfully adopted local or remote child before dropping the batch.
+ * `childContinuationTokens`, `childSessionIds`, `childKinds`, `childUrls`, and
+ * `childCallbackBaseUrls` preserve the delivery coordinates needed to continue
+ * via agentId or cancel every successfully adopted child after the batch
+ * resolves.
  */
 export interface PendingRuntimeActionBatch {
   readonly actions: readonly RuntimeActionRequest[];
+  readonly childCallbackBaseUrls?: Readonly<Record<string, string>>;
   readonly childContinuationTokens?: Readonly<Record<string, string>>;
+  readonly childKinds?: Readonly<Record<string, AgentHandleKind>>;
   readonly childSessionIds?: Readonly<Record<string, string>>;
+  readonly childUrls?: Readonly<Record<string, string>>;
   readonly event: PendingRuntimeActionEventMetadata;
   readonly responseMessages: readonly ModelMessage[];
 }
@@ -120,12 +138,15 @@ export function setPendingRuntimeActionBatch(input: {
 type PendingSubagentChildIdentity =
   | {
       readonly continuationToken: string;
-      readonly kind: "local";
+      readonly kind: "local" | "runtime";
       readonly sessionId: string;
     }
   | {
+      readonly callbackBaseUrl: string;
+      readonly continuationToken: string;
       readonly kind: "remote";
       readonly sessionId: string;
+      readonly url: string;
     };
 
 /** Records one successfully dispatched child's durable identities. */
@@ -143,18 +164,30 @@ export function recordPendingSubagentChild(input: {
   const state = { ...input.session.state };
   state[PENDING_RUNTIME_ACTION_BATCH_KEY] = {
     ...batch,
-    ...(input.child.kind === "local"
-      ? {
-          childContinuationTokens: {
-            ...batch.childContinuationTokens,
-            [input.callId]: input.child.continuationToken,
-          },
-        }
-      : {}),
+    childContinuationTokens: {
+      ...batch.childContinuationTokens,
+      [input.callId]: input.child.continuationToken,
+    },
+    childKinds: {
+      ...batch.childKinds,
+      [input.callId]: `agent/${input.child.kind}`,
+    },
     childSessionIds: {
       ...batch.childSessionIds,
       [input.callId]: input.child.sessionId,
     },
+    ...(input.child.kind === "remote"
+      ? {
+          childCallbackBaseUrls: {
+            ...batch.childCallbackBaseUrls,
+            [input.callId]: input.child.callbackBaseUrl,
+          },
+          childUrls: {
+            ...batch.childUrls,
+            [input.callId]: input.child.url,
+          },
+        }
+      : {}),
   } satisfies PendingRuntimeActionBatch;
 
   return { ...input.session, state };
@@ -282,11 +315,16 @@ export async function resolvePendingRuntimeActions(input: {
     }
   }
 
-  const state = { ...input.session.state };
+  const handleUpdate = updateAgentHandles({
+    batch,
+    results: readyResults,
+    session: input.session,
+  });
+  const state = { ...handleUpdate.session.state };
   delete state[PENDING_RUNTIME_ACTION_BATCH_KEY];
 
   let nextSession: HarnessSession = {
-    ...input.session,
+    ...handleUpdate.session,
     state: Object.keys(state).length > 0 ? state : undefined,
   };
 
@@ -358,12 +396,115 @@ export async function resolvePendingRuntimeActions(input: {
       role: "tool",
     });
   }
+  if (handleUpdate.changed) {
+    const store = getAgentHandleStore(nextSession.state);
+    if (store !== undefined) {
+      messages.push({
+        content: renderAgentsSnippet(store),
+        role: "system",
+      });
+    }
+  }
 
   return {
     messages,
     outcome: "resolved",
     session: nextSession,
   };
+}
+
+function updateAgentHandles(input: {
+  readonly batch: PendingRuntimeActionBatch;
+  readonly results: readonly RuntimeActionResult[];
+  readonly session: HarnessSession;
+}): { readonly changed: boolean; readonly session: HarnessSession } {
+  let changed = false;
+  let session = input.session;
+
+  for (const result of input.results) {
+    if (result.kind !== "subagent-result") {
+      continue;
+    }
+
+    const action = input.batch.actions.find((candidate) => candidate.callId === result.callId);
+    if (
+      action === undefined ||
+      (action.kind !== "subagent-call" && action.kind !== "remote-agent-call")
+    ) {
+      continue;
+    }
+
+    // Dispatch-time capture is authoritative: the pending batch persists at the
+    // dispatch step boundary, strictly before any result can be consumed.
+    const sessionId = input.batch.childSessionIds?.[result.callId];
+    const continuationToken = input.batch.childContinuationTokens?.[result.callId];
+    if (sessionId === undefined || continuationToken === undefined) {
+      continue;
+    }
+
+    const name = action.kind === "remote-agent-call" ? action.remoteAgentName : action.subagentName;
+    const id = deriveAgentId(name, sessionId);
+    if (hasTerminalSubagentErrorCode(result)) {
+      const nextSession = removeAgentHandle(session, id);
+      changed =
+        changed ||
+        nextSession !== session ||
+        (typeof action.input.agentId === "string" && action.input.agentId === id);
+      session = nextSession;
+      continue;
+    }
+
+    const callbackBaseUrl = input.batch.childCallbackBaseUrls?.[result.callId];
+    const description =
+      typeof action.input.description === "string" ? action.input.description : undefined;
+    const baseHandle = {
+      continuationToken,
+      id,
+      kind:
+        input.batch.childKinds?.[result.callId] ??
+        (action.kind === "remote-agent-call"
+          ? "agent/remote"
+          : action.nodeId === ROOT_RUNTIME_AGENT_NODE_ID
+            ? "agent/runtime"
+            : "agent/local"),
+      lastStatus: renderAgentStatus(result.output),
+      name,
+      nodeId: action.nodeId,
+      relationship: "child",
+      sessionId,
+      updatedAt: new Date().toISOString(),
+      url: input.batch.childUrls?.[result.callId] ?? "",
+    } as const satisfies Partial<AgentHandle>;
+    const withCallbackBaseUrl =
+      callbackBaseUrl === undefined ? baseHandle : { ...baseHandle, callbackBaseUrl };
+    session = upsertAgentHandle(
+      session,
+      description === undefined ? withCallbackBaseUrl : { ...withCallbackBaseUrl, description },
+    );
+    changed = true;
+  }
+
+  return { changed, session };
+}
+
+function hasTerminalSubagentErrorCode(
+  result: Extract<RuntimeActionResult, { kind: "subagent-result" }>,
+): boolean {
+  if (result.isError !== true || result.output === null || typeof result.output !== "object") {
+    return false;
+  }
+  const code = Reflect.get(result.output, "code");
+  return (
+    code === "SESSION_FAILED" ||
+    code === "SUBAGENT_START_FAILED" ||
+    code === "AGENT_UNREACHABLE" ||
+    (typeof code === "string" && code.startsWith("REMOTE_AGENT_"))
+  );
+}
+
+function renderAgentStatus(output: RuntimeSubagentResultActionResult["output"]): string {
+  const rendered = typeof output === "string" ? output : JSON.stringify(output);
+  return rendered.replace(/\s+/gu, " ").trim().slice(0, 120);
 }
 
 /**
