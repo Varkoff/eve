@@ -46,7 +46,7 @@ Each command echoes as an invocation line, asks through a bordered panel that ta
 | `/exit`       | Quits the TUI.                                                                                                                                               |
 | `/help`       | Lists the commands available for the current local or remote session.                                                                                        |
 
-`/model`, `/channels`, `/connect`, `/add`, and `/deploy` manage the local agent or its linked project. They are available only when `eve dev` runs the server locally, not when connected to a remote server with `--url`.
+`/model`, `/connect`, `/add`, and `/deploy` manage the local agent or its linked project. They are available only when `eve dev` runs the server locally, not when connected to a remote server with `--url`.
 
 ### Configure the model and provider
 
@@ -55,10 +55,6 @@ Bare `/model` opens the configure menu; its Change model row summarizes the draf
 The provider row opens one menu: AI Gateway via a project, AI Gateway via `AI_GATEWAY_API_KEY`, or **Other providers**. The currently-active provider renders checked with its status beneath it ("Linked to **my-project** in team **my-team**", or "`AI_GATEWAY_API_KEY` set in `.env.local`"), and the cursor opens on it with a `↵ change` badge. The key option becomes a masked input on an `⎿` rail when highlighted, with a `↵ validate` badge after it. Enter validates it without replacing the menu — a `▪ validating` badge while it checks, a red `⨯ API key is not valid` badge on rejection; retrying or editing clears that result. With a non-empty key, the first Esc or Ctrl-C clears the input and the second dismisses the menu. An accepted key is saved to `.env.local` and reported as one `AI_GATEWAY_API_KEY set.` line. The project option asks for a Vercel team, opens that team's recent projects with the project named after your agent suggested first (searching the team for it when it is not among the recents), and lets you search all projects for older matches. Vercel links the selected project, eve verifies its project ID, then pulls its environment into `.env.local`. The **Other providers** option shows direct-provider wiring instructions and leaves the existing setup untouched. The dev server reloads env files and refreshes the status bar automatically, with no restart needed.
 
 The provider row demands attention (a bold yellow "Configure model access" with a yellow "Not configured" hint that dims when unselected and uses the terminal foreground when selected) until a link or gateway credential is detected, then names the connection afterward (for example "AI Gateway (Linked to my-project in my-team)"). Setup menus mark the cursor row with a padded, filled-arrow inverse label that inherits the row's accent: blue normally and yellow for warning rows. In stacked menus, the selected row's description appears directly beneath that option. The completed command's outcome stays in the transcript after the panel closes. When a turn fails because AI Gateway authentication is missing or stale, the error points you at `/model` directly.
-
-### Add a channel
-
-`/channels` shows the agent's channel list. Already-registered channels render as checked, focusable rows with an "Already installed" hint. Picking one adds it (including the Slack Connect provisioning), then installs the dependencies the scaffold added so the dev server can load the new channels right away. After each addition the list repaints with the channel checked, until Done (or Esc) leaves the flow.
 
 ### Browse registry integrations
 
