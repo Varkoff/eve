@@ -54,10 +54,6 @@ function fakeFlows(overrides: Partial<TuiSetupFlows> = {}): TuiSetupFlows {
       kind: "done",
       modelMessage: "Model changed to openai/gpt-5.5. Live on your next prompt.",
     })),
-    runConnectionsFlow: vi.fn<TuiSetupFlows["runConnectionsFlow"]>(async () => ({
-      kind: "done",
-      addedConnections: [],
-    })),
     runRegistryFlow: vi.fn<TuiSetupFlows["runRegistryFlow"]>(async () => ({
       kind: "done",
       addedItems: [],
@@ -71,7 +67,7 @@ function fakeFlows(overrides: Partial<TuiSetupFlows> = {}): TuiSetupFlows {
 }
 
 function run(input: {
-  command: "vc:install" | "vc:login" | "model" | "connect" | "add" | "deploy";
+  command: "vc:install" | "vc:login" | "model" | "add" | "deploy";
   flows: TuiSetupFlows;
   renderer?: TuiSetupCommandRenderer;
   initialModelStep?: "provider";
@@ -104,7 +100,6 @@ describe("runTuiSetupCommand", () => {
       "vc:install": "pulse",
       "vc:login": "pulse",
       model: "pulse",
-      connect: "pulse",
       add: "pulse",
       deploy: "spinner",
     });
@@ -321,44 +316,6 @@ describe("runTuiSetupCommand", () => {
 
   it.each([
     [
-      "configured",
-      { kind: "done", addedConnections: ["linear", "notion"] },
-      "Connections added: linear, notion.",
-      { kind: "connection-added" },
-    ],
-    [
-      "empty",
-      { kind: "done", addedConnections: [] },
-      "No connections added.",
-      { kind: "model-access-changed" },
-    ],
-    ["cancelled", { kind: "cancelled" }, "/connect dismissed.", { kind: "model-access-changed" }],
-    [
-      "partially failed",
-      { kind: "failed", addedConnections: ["linear"], message: "install failed" },
-      "Connection files changed, but /connect failed: install failed",
-      { kind: "connection-added" },
-    ],
-    [
-      "failed before a connection file was written",
-      { kind: "failed", addedConnections: [], message: "connector setup failed" },
-      "/connect failed: connector setup failed",
-      { kind: "model-access-changed" },
-    ],
-  ] as const)("reports %s connection flows", async (_case, result, message, effect) => {
-    const runConnectionsFlow = vi.fn(async () => result);
-    await expect(
-      run({ command: "connect", flows: fakeFlows({ runConnectionsFlow }) }),
-    ).resolves.toEqual({
-      message,
-      preserveFlowDiagnostics: true,
-      effect,
-    });
-    expect(runConnectionsFlow).toHaveBeenCalledWith(expect.objectContaining({ appRoot: APP_ROOT }));
-  });
-
-  it.each([
-    [
       "added",
       { kind: "done", addedItems: ["extension/browser"] },
       "Registry items added: extension/browser.",
@@ -375,7 +332,6 @@ describe("runTuiSetupCommand", () => {
     });
     expect(runRegistryFlow).toHaveBeenCalledWith(expect.objectContaining({ appRoot: APP_ROOT }));
   });
-
 
   it("reports the production URL after a deploy", async () => {
     const flows = fakeFlows();
@@ -559,6 +515,4 @@ describe("runTuiSetupCommand", () => {
       preserveFlowDiagnostics: false,
     });
   });
-
-
 });

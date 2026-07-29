@@ -1,5 +1,4 @@
 import { HumanActionRequiredError } from "#setup/human-action.js";
-import { runConnectionsFlow } from "#setup/flows/connections.js";
 import { runDeployFlow } from "#setup/flows/deploy.js";
 import {
   runInstallVercelCliFlow,
@@ -28,7 +27,6 @@ export const SETUP_FLOW_CONFIG = {
   "vc:install": { title: "Install the Vercel CLI", indicator: "pulse" },
   "vc:login": { title: "Log in to Vercel", indicator: "pulse" },
   model: { title: "Configure the agent model", indicator: "pulse" },
-  connect: { title: "Agent connections", indicator: "pulse" },
   add: { title: "Add integration", indicator: "pulse" },
   deploy: { title: "Deploy to Vercel", indicator: "spinner" },
 } satisfies Record<TuiSetupCommand, { title: string; indicator: SetupFlowIndicator }>;
@@ -48,7 +46,6 @@ export interface TuiSetupCommandInput {
   renderer: TuiSetupCommandRenderer;
   /** Initial model-flow step authorized by the runner's boot evidence. */
   initialModelStep?: "provider";
-  disabledConnectionReasons?: Readonly<Record<string, string>>;
   /** Test seam; defaults to the real TUI-native prompter over `renderer`. */
   createPrompter?: (renderer: TuiPrompterRenderer) => Prompter;
   /** Test seam; defaults to the real setup flows. */
@@ -60,7 +57,6 @@ export interface TuiSetupFlows {
   runInstallVercelCliFlow: typeof runInstallVercelCliFlow;
   runLoginFlow: typeof runLoginFlow;
   runModelFlow: typeof runModelFlow;
-  runConnectionsFlow: typeof runConnectionsFlow;
   runRegistryFlow: typeof runRegistryFlow;
   runDeployFlow: typeof runDeployFlow;
 }
@@ -72,7 +68,7 @@ export interface TuiSetupCommandResult {
   /** Keep warning/error lines after the bordered panel closes. */
   preserveFlowDiagnostics: boolean;
   /** Status refresh required after the command settles. */
-  effect?: VercelStatusEffect | { kind: "connection-added" } | { kind: "model-access-changed" };
+  effect?: VercelStatusEffect | { kind: "model-access-changed" };
 }
 
 /**
@@ -116,7 +112,7 @@ function muteableRenderer(
 }
 
 /**
- * Runs one TUI setup command (/model, /connect, /deploy) over the
+ * Runs one TUI setup command (/model, /add, /deploy) over the
  * shared setup flows, asking through the TUI's own bordered panel. Never throws:
  * every outcome — done, cancelled, failed — folds into the returned command
  * result. Ctrl-C or Esc on the working indicator (no question open) aborts the
@@ -165,7 +161,6 @@ async function executeSetupCommand(
     runInstallVercelCliFlow,
     runLoginFlow,
     runModelFlow,
-    runConnectionsFlow,
     runRegistryFlow,
     runDeployFlow,
     ...input.flows,
@@ -224,46 +219,6 @@ async function executeSetupCommand(
           outcome.effect = { kind: "model-access-changed" };
         }
         return outcome;
-      }
-      case "connect": {
-        const result = await flows.runConnectionsFlow({
-          appRoot,
-          prompter,
-          signal,
-          disabledConnectionReasons: input.disabledConnectionReasons,
-        });
-        switch (result.kind) {
-          case "cancelled":
-            return {
-              message: "/connect dismissed.",
-              preserveFlowDiagnostics: true,
-              effect: { kind: "model-access-changed" },
-            };
-          case "failed":
-            return {
-              message:
-                result.addedConnections.length === 0
-                  ? `/connect failed: ${result.message}`
-                  : `Connection files changed, but /connect failed: ${result.message}`,
-              preserveFlowDiagnostics: true,
-              effect:
-                result.addedConnections.length === 0
-                  ? { kind: "model-access-changed" }
-                  : { kind: "connection-added" },
-            };
-          case "done":
-            return {
-              message:
-                result.addedConnections.length === 0
-                  ? "No connections added."
-                  : `Connections added: ${result.addedConnections.join(", ")}.`,
-              preserveFlowDiagnostics: true,
-              effect:
-                result.addedConnections.length === 0
-                  ? { kind: "model-access-changed" }
-                  : { kind: "connection-added" },
-            };
-        }
       }
       case "add": {
         const result = await flows.runRegistryFlow({ appRoot, prompter, signal });

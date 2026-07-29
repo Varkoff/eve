@@ -13,7 +13,7 @@ On startup the TUI prints a brand line with your agent's name, plus a rotating t
 
 ```text
  eve weather-agent
- Use /channels to add more ways to reach your agent.
+ Use /add to install integrations from the registry.
 ```
 
 If agent discovery reported problems, an error and warning count renders between the two lines. Instructions, tools, skills, and subagents are one `eve info` away, and `/help` lists every command. The TUI also runs a startup check. A fresh `eve init` starts local `eve dev` with `/model` prefilled. That input starts onboarding: the flow installs the Vercel CLI if needed, asks you to log in if needed, opens `/model`, then offers categorized next steps for channels, connections, capabilities, and observability through the registry before the first prompt. Other `eve dev` sessions show missing setup as an attention line, with each command's outcome hanging under it on a `⎿` connector.
@@ -30,13 +30,11 @@ Errors render compactly with docs links highlighted. A code bug escaping your ag
 
 ## Slash commands
 
-Each command echoes as an invocation line, asks through a bordered panel that takes the input area's place (one question at a time, separate from the chat transcript), and finishes with a one-line `⎿` result. Loading states stay on the ephemeral status line instead of piling into the transcript; model, channel, connection, and the Vercel CLI commands (`/vc:install`, `/vc:login`) use the same green square pulse as the build phase, while `/deploy` keeps a spinner. A connection setup waiting for browser action changes that pulse and the word "browser" to yellow. Setup menus render the selected option with a filled arrow and an inverse label padded by one space on each side. Text prompts use a blinking block cursor over the character at the caret. The selected label is blue normally and yellow for warning rows.
+Each command echoes as an invocation line, asks through a bordered panel that takes the input area's place (one question at a time, separate from the chat transcript), and finishes with a one-line `⎿` result. Loading states stay on the ephemeral status line instead of piling into the transcript; model, registry, and the Vercel CLI commands (`/vc:install`, `/vc:login`) use the same green square pulse as the build phase, while `/deploy` keeps a spinner. A setup waiting for browser action changes that pulse and the word "browser" to yellow. Setup menus render the selected option with a filled arrow and an inverse label padded by one space on each side. Text prompts use a blinking block cursor over the character at the caret. The selected label is blue normally and yellow for warning rows.
 
 | Command       | Does                                                                                                                                                         |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `/model`      | Opens a configure menu that loops until Done (or Esc). See [Configure the model and provider](#configure-the-model-and-provider).                            |
-| `/channels`   | Shows the agent's channel list and adds the one you pick. See [Add a channel](#add-a-channel).                                                               |
-| `/connect`    | Shows the Vercel Connect MCP catalog and configures the server you pick. See [Add a connection](#add-a-connection).                                          |
 | `/add`        | Searches registry integrations or adds an item address entered directly.                                                                                     |
 | `/deploy`     | Ships the agent to Vercel production, linking the directory first when it is unlinked.                                                                       |
 | `/vc:install` | Installs the Vercel CLI. Available locally and on a remote session.                                                                                          |
@@ -46,7 +44,7 @@ Each command echoes as an invocation line, asks through a bordered panel that ta
 | `/exit`       | Quits the TUI.                                                                                                                                               |
 | `/help`       | Lists the commands available for the current local or remote session.                                                                                        |
 
-`/model`, `/connect`, `/add`, and `/deploy` manage the local agent or its linked project. They are available only when `eve dev` runs the server locally, not when connected to a remote server with `--url`.
+`/model`, `/add`, and `/deploy` manage the local agent or its linked project. They are available only when `eve dev` runs the server locally, not when connected to a remote server with `--url`.
 
 ### Configure the model and provider
 
@@ -60,11 +58,7 @@ The provider row demands attention (a bold yellow "Configure model access" with 
 
 `/add` first organizes integrations by what they add: a way to chat, tools and data, capabilities, or observability. Pick a category to open its searchable catalog from the official eve registry and the registry namespaces configured in `package.json`, or browse everything. Each integration shows its source beside its name, such as `Vercel` or a configured registry namespace. Select a result to review its source, packages, environment variables, and target files before adding it, or type an official item path, configured namespace address, or HTTP(S) URL directly into the search bar. After an add attempt finishes, the panel closes instead of returning to the catalog.
 
-### Add a connection
-
-`/connect` shows a searchable list of MCP servers available through Vercel Connect. Already-authored connections remain checked. Logged-out users are directed to `/vc:login`. When the directory is not linked, selecting a server opens the same team and project flow used by `/model`, including creating a project or linking an existing one.
-
-For a selected server, eve first tries to attach the provider's canonical connector. If that fails, choose an existing connector from a searchable list or create one with a specific name. The fallback stays scoped to the team selected by the linked project. A connector created by the current attempt is removed if attachment or connection-file patching fails. Successful setup writes `agent/connections/<name>.ts`, records the attached connector UID, installs the new dependency so the dev server can load it, then returns to the main prompt.
+Connection registry items install their definition and then configure Vercel Connect through the same `/add` flow. If the directory is unlinked, setup first offers to create or link a project. Run `eve add connection/<name>` for the equivalent CLI flow.
 
 ## Keyboard shortcuts
 
