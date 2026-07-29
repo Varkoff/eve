@@ -45,11 +45,6 @@ describe("parsePromptCommand", () => {
       name: "vc:login",
       argument: "",
     });
-    expect(parsePromptCommand("/channels")).toEqual({
-      type: "extension",
-      name: "channels",
-      argument: "",
-    });
     expect(parsePromptCommand("/deploy")).toEqual({
       type: "extension",
       name: "deploy",
@@ -81,7 +76,7 @@ describe("parsePromptCommand", () => {
     expect(parsePromptCommand("/vc")).toBeNull();
     expect(parsePromptCommand("/login")).toBeNull();
     expect(parsePromptCommand("/vc:auth")).toBeNull();
-    expect(parsePromptCommand("/channels extra")).toBeNull();
+    expect(parsePromptCommand("/channels")).toBeNull();
     expect(parsePromptCommand("tell me about /channels")).toBeNull();
     expect(parsePromptCommand("/")).toBeNull();
     expect(parsePromptCommand("")).toBeNull();
@@ -93,7 +88,6 @@ describe("promptCommandsFor", () => {
   it("exposes project commands only for local sessions", () => {
     const names = promptCommandsFor("local").map((command) => command.name);
     expect(names).toContain("model");
-    expect(names).toContain("channels");
     expect(names).toContain("connect");
     expect(names).toContain("deploy");
     expect(names).toContain("vc:install");
@@ -107,7 +101,6 @@ describe("promptCommandsFor", () => {
     expect(names).toContain("vc:login");
     expect(names).not.toContain("vc:auth");
     expect(names).not.toContain("model");
-    expect(names).not.toContain("channels");
     expect(names).not.toContain("connect");
     expect(names).not.toContain("deploy");
   });

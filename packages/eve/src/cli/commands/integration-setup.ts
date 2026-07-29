@@ -1,34 +1,23 @@
 import { interactiveAsker } from "#setup/ask.js";
-import type { AddChannelsDeps } from "#setup/boxes/add-channels.js";
-import type { DeployProjectDeps } from "#setup/boxes/deploy-project.js";
-import { deployChannelSetup } from "#setup/channel-setup-deployment.js";
+import type { PhotonSetupDeps } from "#setup/photon-setup.js";
 import {
-  channelSetupEnvironment,
-  describeChannelSetupEnvironment,
-} from "#setup/channel-setup-environment.js";
-import {
-  channelSetupIntegration,
-  createChannelSetupUi,
-} from "#setup/channel-setup-integrations.js";
+  photonSetupEnvironment,
+  describePhotonSetupEnvironment,
+} from "#setup/photon-setup-environment.js";
+import { createPhotonSetupUi, photonSetupIntegration } from "#setup/photon-setup-integrations.js";
 import { detectDeployment, projectResolutionFromDeployment } from "#setup/project-resolution.js";
 import { createPrompter, type Prompter } from "#setup/prompter.js";
-import { isEveProject, type ChannelKind } from "#setup/scaffold/index.js";
-import { createDefaultSetupState, type SetupState } from "#setup/state.js";
+import { isEveProject } from "#setup/scaffold/index.js";
 import { getVercelAuthStatus } from "#setup/vercel-project.js";
 
 import { NOT_AN_AGENT_MESSAGE } from "./preconditions.js";
 import type { RegistryCommandLogger } from "./registry.js";
 
-export interface IntegrationSetupOptions {
-  yes?: boolean;
-}
-
 export interface IntegrationSetupDependencies {
   createPrompter?: () => Prompter;
   detectDeployment: typeof detectDeployment;
   getVercelAuthStatus: typeof getVercelAuthStatus;
-  addChannelsDeps?: AddChannelsDeps;
-  deployProjectDeps?: DeployProjectDeps;
+  photonDeps?: PhotonSetupDeps;
 }
 
 const defaultIntegrationSetupDependencies: IntegrationSetupDependencies = {
@@ -41,7 +30,6 @@ export async function runIntegrationSetupCommand(
   logger: RegistryCommandLogger,
   appRoot: string,
   kind: string,
-  options: IntegrationSetupOptions = {},
   dependencies: IntegrationSetupDependencies = defaultIntegrationSetupDependencies,
 ): Promise<void> {
   if (!(await isEveProject(appRoot))) {
@@ -51,58 +39,30 @@ export async function runIntegrationSetupCommand(
   }
 
   try {
-    if (kind !== "slack" && kind !== "web") {
+    if (kind !== "photon") {
       throw new Error(
         `Integration setup "${kind}" is not available in this version of eve. Upgrade eve and try again.`,
       );
     }
-    const channelKind: ChannelKind = kind;
     const prompter = dependencies.createPrompter?.() ?? createPrompter();
-    prompter.intro(`Set up ${channelSetupIntegration(channelKind).label}`);
+    const integration = photonSetupIntegration();
+    prompter.intro(`Set up ${integration.label}`);
     prompter.log.message("Checking Vercel setup...");
     const [deployment, authStatus] = await Promise.all([
       dependencies.detectDeployment(appRoot),
       dependencies.getVercelAuthStatus(appRoot),
     ]);
     const project = projectResolutionFromDeployment(deployment);
-    const environment = channelSetupEnvironment(authStatus, project);
-    prompter.log.info(describeChannelSetupEnvironment(environment));
-    const state: SetupState = {
-      ...createDefaultSetupState(),
-      project,
-      projectPath: { kind: "resolved", inPlace: true, path: appRoot },
-      channelSelection: [channelKind],
-    };
-    const result = await channelSetupIntegration(channelKind).setup({
+    const environment = photonSetupEnvironment(authStatus, project);
+    prompter.log.info(describePhotonSetupEnvironment(environment));
+    const result = await integration.setup({
       environment,
-      state,
-      ui: createChannelSetupUi({ asker: interactiveAsker(prompter), prompter }),
-      presetCreateSlackbot: options.yes ? true : undefined,
-      presetPortableCredentials: options.yes ? true : undefined,
-      skipDependencyMutation: true,
-      deps: dependencies.addChannelsDeps,
+      state: { agentName: "", project, projectPath: appRoot },
+      ui: createPhotonSetupUi({ asker: interactiveAsker(prompter), prompter }),
+      photonDeps: dependencies.photonDeps,
     });
     if (result.kind === "cancelled") return;
-    let finalState = result.state;
-    const addedVercelChannel =
-      finalState.slackbotAttached ||
-      (environment.vercel.kind === "available" && finalState.channels.includes("web"));
-    if (addedVercelChannel) {
-      finalState = await deployChannelSetup({
-        state: finalState,
-        ui: createChannelSetupUi({ asker: interactiveAsker(prompter), prompter }),
-        presetDeploy:
-          options.yes === true
-            ? true
-            : !process.stdin.isTTY || !process.stdout.isTTY
-              ? false
-              : undefined,
-        deps: dependencies.deployProjectDeps,
-      });
-    }
-    prompter.outro(
-      finalState.channels.includes(channelKind) ? "Integration set up." : "No changes made.",
-    );
+    prompter.outro("Integration set up.");
   } catch (error) {
     logger.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;

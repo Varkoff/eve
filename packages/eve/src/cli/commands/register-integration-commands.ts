@@ -16,9 +16,8 @@ export function registerIntegrationCommands(input: {
   program
     .command("integration", { hidden: true })
     .command("setup <kind>")
-    .option("-y, --yes")
-    .action(async (kind: string, options: { yes?: boolean }) => {
+    .action(async (kind: string) => {
       const { runIntegrationSetupCommand } = await import("./integration-setup.js");
-      await runIntegrationSetupCommand(logger, appRoot, kind, { yes: options.yes });
+      await runIntegrationSetupCommand(logger, appRoot, kind);
     });
 }

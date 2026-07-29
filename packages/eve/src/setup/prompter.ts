@@ -112,7 +112,7 @@ export interface SelectCommonOptions<T extends PrompterValue> {
    * each hint on its own line below the label with a blank line between options —
    * for small action menus whose hints carry current values. "inline" keeps hints
    * on the label row, suppresses numeric shortcuts, and separates the trailing
-   * completion action (e.g. the `/channels` task list).
+   * completion action.
    */
   hintLayout?: "stacked" | "inline";
   /** Outcome lines from earlier laps of a looping menu. */

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "channel/photon",
+  "type": "registry:item",
+  "title": "Photon",
+  "description": "Connect an eve agent to iMessage through Photon with guided project and phone setup.",
+  "dependencies": ["@vercel/connect@0.4.3"],
+  "meta": {
+    "eve": {
+      "setup": {
+        "command": "eve",
+        "args": ["integration", "setup", "photon"]
+      },
+      "requires": ">=0.27.11"
+    }
+  }
+}

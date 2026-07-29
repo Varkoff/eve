@@ -1,15 +1,15 @@
 import type { ProjectResolution } from "./project-resolution.js";
 import type { VercelAuthStatus } from "./vercel-project.js";
 
-/** Read-only hosting facts available to channel-owned setup hooks. */
-export interface ChannelSetupEnvironment {
+/** Read-only hosting facts available to Photon-owned setup hooks. */
+export interface PhotonSetupEnvironment {
   vercel:
     | { kind: "available"; project: ProjectResolution }
     | { kind: "unavailable"; reason: Exclude<VercelAuthStatus, "authenticated"> };
 }
 
 /** Describes the result of the read-only Vercel capability probe. */
-export function describeChannelSetupEnvironment(environment: ChannelSetupEnvironment): string {
+export function describePhotonSetupEnvironment(environment: PhotonSetupEnvironment): string {
   if (environment.vercel.kind === "available") {
     switch (environment.vercel.project.kind) {
       case "deployed":
@@ -22,19 +22,19 @@ export function describeChannelSetupEnvironment(environment: ChannelSetupEnviron
   }
   switch (environment.vercel.reason) {
     case "logged-out":
-      return "No authenticated Vercel account found; using portable channel setup.";
+      return "No authenticated Vercel account found; using portable Photon setup.";
     case "cli-missing":
-      return "Vercel CLI not found; using portable channel setup.";
+      return "Vercel CLI not found; using portable Photon setup.";
     case "unavailable":
-      return "Could not verify the Vercel account; using portable channel setup.";
+      return "Could not verify the Vercel account; using portable Photon setup.";
   }
 }
 
-/** Builds channel setup facts from the independent Vercel probes. */
-export function channelSetupEnvironment(
+/** Builds Photon setup facts from the independent Vercel probes. */
+export function photonSetupEnvironment(
   authStatus: VercelAuthStatus,
   project: ProjectResolution,
-): ChannelSetupEnvironment {
+): PhotonSetupEnvironment {
   return authStatus === "authenticated"
     ? { vercel: { kind: "available", project } }
     : { vercel: { kind: "unavailable", reason: authStatus } };

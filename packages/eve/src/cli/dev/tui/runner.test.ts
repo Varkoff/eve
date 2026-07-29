@@ -1525,9 +1525,8 @@ describe("parsePromptCommand", () => {
     ["/new", { type: "new" }],
     ["/exit", { type: "exit" }],
     ["/quit", { type: "exit" }],
-    ["/channels", { type: "extension", name: "channels", argument: "" }],
     ["/deploy", { type: "extension", name: "deploy", argument: "" }],
-    ["  /channels  ", { type: "extension", name: "channels", argument: "" }],
+    ["  /channels  ", null],
     ["/vercel", null],
     ["/links", null],
     ["deploy", null],
@@ -1551,30 +1550,6 @@ describe("EveTUIRunner setup commands", () => {
     };
     return { renderer, notices };
   }
-
-  it("answers /channels with a local-only notice when no appRoot is configured", async () => {
-    const session = sessionYielding([]);
-    const { renderer, notices } = recordingRenderer(["/channels", undefined]);
-
-    const runner = new EveTUIRunner({
-      session,
-      renderer,
-      name: "Weather Agent",
-      availablePromptCommands: promptCommandsFor("remote"),
-      promptCommandHandler: createPromptCommandHandler({
-        target: {
-          kind: "remote",
-          workspaceRoot: "/tmp/weather-agent",
-          serverUrl: "https://example.com/",
-        },
-      }),
-    });
-    await runner.run();
-
-    expect(notices).toHaveLength(1);
-    expect(notices[0]).toContain("--url");
-    expect(session.send).not.toHaveBeenCalled();
-  });
 
   it("answers /deploy with an unsupported notice when the renderer cannot suspend", async () => {
     const session = sessionYielding([]);
@@ -2077,7 +2052,7 @@ describe("EveTUIRunner Vercel status line", () => {
     });
   });
 
-  it("applies command effects: channels mark pending, deploy clears and re-probes", async () => {
+  it("applies deploy effects and re-probes", async () => {
     const pushes: VercelStatusSnapshot[] = [];
     const settled = createDeferred<void>();
     let probes = 0;
@@ -2087,7 +2062,7 @@ describe("EveTUIRunner Vercel status line", () => {
       probes += 1;
       return probes === 1 ? new Promise<never>(() => {}) : Promise.resolve(identity);
     });
-    const prompts: Array<string | undefined> = ["/channels", "/deploy"];
+    const prompts: Array<string | undefined> = ["/deploy"];
     const renderer = fakeRenderer({
       renderNotice: vi.fn(),
       readPrompt: vi.fn(async () => {
@@ -2098,14 +2073,10 @@ describe("EveTUIRunner Vercel status line", () => {
       }),
       setVercelStatus: (snapshot) => {
         pushes.push(snapshot);
-        if (pushes.length >= 3) settled.resolve();
+        if (pushes.length >= 2) settled.resolve();
       },
     });
     const outcomes: Record<string, PromptCommandOutcome> = {
-      channels: {
-        message: "Channels added: slack — run /deploy to ship them.",
-        effect: { kind: "channels-added" },
-      },
       deploy: { message: "Deployed.", effect: { kind: "deployed" } },
     };
 
@@ -2119,18 +2090,14 @@ describe("EveTUIRunner Vercel status line", () => {
     });
     await runner.run();
 
-    expect(pushes).toEqual([
-      { pendingDeploy: true },
-      { pendingDeploy: false },
-      { identity, pendingDeploy: false },
-    ]);
+    expect(pushes).toEqual([{ pendingDeploy: false }, { identity, pendingDeploy: false }]);
     expect(detectIdentity).toHaveBeenCalledTimes(2);
   });
 
   it("refreshes agent info only after a model-access change", async () => {
     const client = stubClient();
     const info = vi.spyOn(client, "info").mockResolvedValue(AGENT_INFO);
-    const prompts: Array<string | undefined> = ["/channels", "/model", undefined];
+    const prompts: Array<string | undefined> = ["/deploy", "/model", undefined];
     const infoCallsAtPrompt: number[] = [];
     const renderer = fakeRenderer({
       readPrompt: vi.fn(async () => {
@@ -2138,9 +2105,9 @@ describe("EveTUIRunner Vercel status line", () => {
         return prompts.shift();
       }),
     });
-    const channelsOutcome: PromptCommandOutcome = {
-      message: "Channels added.",
-      effect: { kind: "channels-added" },
+    const deployOutcome: PromptCommandOutcome = {
+      message: "Deployed.",
+      effect: { kind: "deployed" },
     };
     const modelOutcome: PromptCommandOutcome = {
       message: "Connected to AI Gateway.",
@@ -2157,7 +2124,7 @@ describe("EveTUIRunner Vercel status line", () => {
       bootDetections: [],
       detectProjectIdentity: vi.fn(async () => undefined),
       promptCommandHandler: {
-        handle: async (command) => (command.name === "model" ? modelOutcome : channelsOutcome),
+        handle: async (command) => (command.name === "model" ? modelOutcome : deployOutcome),
       },
     });
 
@@ -2686,7 +2653,7 @@ describe("EveTUIRunner command outcome rendering", () => {
 
     expect(results).toHaveLength(1);
     expect(results[0]).toContain("/model");
-    expect(results[0]).toContain("/channels");
+    expect(results[0]).not.toContain("/channels");
     expect(session.send).not.toHaveBeenCalled();
   });
 

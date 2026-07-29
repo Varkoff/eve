@@ -1,16 +1,16 @@
 import { confirm, SkippedSignal, type Asker } from "./ask.js";
 import type { Prompter } from "./prompter.js";
 
-/** UI capabilities available to a channel-owned setup hook. */
-export interface ChannelSetupUi {
+/** UI capabilities available to a Photon-owned setup hook. */
+export interface PhotonSetupUi {
   readonly asker: Asker;
   readonly prompter: Prompter;
   confirm(input: { key: string; message: string; recommended?: boolean }): Promise<boolean>;
   nextSteps(lines: readonly string[]): void;
 }
 
-/** Adapts the shared setup asker and prompter to the channel hook UI. */
-export function createChannelSetupUi(input: { asker: Asker; prompter: Prompter }): ChannelSetupUi {
+/** Adapts the shared setup asker and prompter to the Photon setup UI. */
+export function createPhotonSetupUi(input: { asker: Asker; prompter: Prompter }): PhotonSetupUi {
   return {
     ...input,
     async confirm(question) {

@@ -1,9 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createFakePrompter } from "#internal/testing/fake-prompter.js";
-import type { AddChannelsDeps } from "#setup/boxes/add-channels.js";
-import { deriveSlackConnectorSlug } from "#setup/scaffold/index.js";
-
 import { runIntegrationSetupCommand } from "./integration-setup.js";
 import type { RegistryCommandLogger } from "./registry.js";
 
@@ -19,57 +15,18 @@ function logger(): RegistryCommandLogger & { errors: string[] } {
   return { errors, error: (message) => errors.push(message), log: () => {} };
 }
 
-function addChannelsDeps(): AddChannelsDeps {
-  return {
-    ensureChannel: vi.fn<AddChannelsDeps["ensureChannel"]>(async (options) => ({
-      kind: "web",
-      action: "created",
-      filesWritten: [`${options.projectRoot}/app/page.tsx`],
-      filesSkipped: [],
-      packageJsonUpdated: [],
-    })),
-    deriveSlackConnectorSlug,
-    provisionSlackbot: vi.fn(),
-    reconcileSlackUid: vi.fn(async () => true),
-    detectPackageManager: vi.fn<AddChannelsDeps["detectPackageManager"]>(async () => ({
-      kind: "pnpm",
-      source: "default",
-    })),
-    runPackageManagerInstall: vi.fn(async () => true),
-    runVercel: vi.fn(async () => true),
-    detectDeployment: vi.fn<AddChannelsDeps["detectDeployment"]>(async () => ({
-      state: "unlinked",
-    })),
-  };
-}
-
 afterEach(() => {
   process.exitCode = undefined;
 });
 
 describe("runIntegrationSetupCommand", () => {
-  it("runs registry-owned setup without mutating or installing dependencies", async () => {
+  it("rejects setup kinds outside Photon", async () => {
     const output = logger();
-    const deps = addChannelsDeps();
-    const fake = createFakePrompter();
 
-    await runIntegrationSetupCommand(
-      output,
-      "/project",
-      "web",
-      {},
-      {
-        createPrompter: () => fake.prompter,
-        detectDeployment: vi.fn(async () => ({ state: "unlinked" as const })),
-        getVercelAuthStatus: vi.fn(async () => "cli-missing" as const),
-        addChannelsDeps: deps,
-      },
-    );
+    await runIntegrationSetupCommand(output, "/project", "web");
 
-    expect(deps.ensureChannel).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: "web", skipDependencyMutation: true }),
-    );
-    expect(deps.runPackageManagerInstall).not.toHaveBeenCalled();
-    expect(output.errors).toEqual([]);
+    expect(output.errors).toEqual([
+      'Integration setup "web" is not available in this version of eve. Upgrade eve and try again.',
+    ]);
   });
 });

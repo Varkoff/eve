@@ -46,7 +46,6 @@ export {
   type HeadlessNextStep,
   HeadlessPromptError,
 } from "./headless.js";
-export { composeOnboardingBoxes, type OnboardingBoxesOptions } from "./onboarding.js";
 export { createPromptCommandOutput, type PromptCommandLog } from "./cli/index.js";
 export {
   getPackageManagerStrategy,
