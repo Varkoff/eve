@@ -660,7 +660,8 @@
       "meta": {
         "eve": {
           "setup": {
-            "command": "eve",
+            "package": "eve",
+            "bin": "eve",
             "args": ["integration", "setup", "slack"]
           },
           "requires": ">=0.27.8"
@@ -779,7 +780,8 @@
       "meta": {
         "eve": {
           "setup": {
-            "command": "eve",
+            "package": "eve",
+            "bin": "eve",
             "args": ["integration", "setup", "web"]
           },
           "requires": ">=0.27.8"
