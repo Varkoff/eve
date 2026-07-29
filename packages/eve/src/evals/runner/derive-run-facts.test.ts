@@ -86,6 +86,7 @@ function inputRequested(requestIds: readonly string[]): HandleMessageStreamEvent
           kind: "tool-call" as const,
           toolName: "bash",
         },
+        kind: "tool-approval" as const,
         prompt: "Approve?",
         requestId,
       })),
